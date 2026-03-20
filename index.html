@@ -94,7 +94,7 @@ input, textarea, select { font-family: var(--font-body); }
 <div id="root"></div>
 
 <script type="text/babel" data-type="module">
-const { useState, useEffect, useCallback, useRef, createContext, useContext, useMemo } = React;
+const { useState, useEffect, useCallback, useRef, createContext, useContext, useMemo, Fragment, createElement } = React;
 
 /* ============================================================
    CONSTANTS
@@ -237,6 +237,32 @@ const GLOBALAIR_RULES = [
   { rule: 'No exclamation marks in buyer-facing copy', critical: false }
 ];
 
+const REQUEST_TYPES = [
+  { id: 'content_brief', label: 'Content Brief', color: '#4782D3' },
+  { id: 'design_asset', label: 'Design Asset', color: '#E1306C' },
+  { id: 'email_campaign', label: 'Email Campaign', color: '#97CB00' },
+  { id: 'fbo_arc', label: 'FBO/ARC Content', color: '#F59E0B' },
+  { id: 'tech_dev', label: 'Tech/Dev', color: '#8A92A8' },
+  { id: 'strategy_other', label: 'Strategy/Other', color: '#1A2FA8' }
+];
+
+const REQUEST_ASSIGNEE_DEFAULTS = {
+  content_brief: 'keaton', design_asset: 'keaton',
+  email_campaign: 'sydney', fbo_arc: 'abby',
+  tech_dev: 'casey', strategy_other: 'casey'
+};
+
+const REQUEST_STATUSES = [
+  { id: 'submitted', label: 'SUBMITTED', color: '#4782D3' },
+  { id: 'triaged', label: 'TRIAGED', color: '#1A2FA8' },
+  { id: 'in_progress', label: 'IN PROGRESS', color: '#F59E0B' },
+  { id: 'blocked', label: 'BLOCKED', color: '#E8503A' },
+  { id: 'complete', label: 'COMPLETE', color: '#97CB00' },
+  { id: 'archived', label: 'ARCHIVED', color: '#8A92A8' }
+];
+
+const STATUS_ORDER = ['submitted','triaged','in_progress','blocked','complete'];
+
 const CONTENT_MIX = [
   { type: 'Pilot-Direct',  target: '50-60%', description: 'Education, buyer guides, ownership content aimed at pilots/owners' },
   { type: 'Listing',       target: '25-35%', description: 'Aircraft listing posts with broker presentation' },
@@ -274,7 +300,11 @@ const DEFAULT_STATE = {
   action_queue: [],
   competitors: [],
   manual_platform_data: {},
-  requests: [],
+  requests: [
+    { id: 'seed-req-001', type: 'design_asset', title: 'NBAA SDC social countdown template', description: 'Need countdown template for NBAA SDC event social posts. 3-slide carousel format for Instagram + single image for LinkedIn/Facebook.', priority: 'P1', status: 'submitted', requestor: 'keaton', assignee: null, deadline: null, related_brief_id: null, created_date: '2026-03-18T10:00:00Z', updated_date: '2026-03-18T10:00:00Z', notes: '' },
+    { id: 'seed-req-002', type: 'tech_dev', title: 'Add CallRail GTM tag to all 8 servers', description: 'CallRail tracking tag needs deployment across all 8 GlobalAir servers via GTM. Coordinate with Thomas Galla at BluegrassNet.', priority: 'P0', status: 'triaged', requestor: 'casey', assignee: 'casey', deadline: '2026-03-25T00:00:00Z', related_brief_id: null, created_date: '2026-03-15T09:00:00Z', updated_date: '2026-03-16T14:00:00Z', notes: 'Routed to dev sprint. Thomas confirmed GTM access on 6 of 8 servers.' },
+    { id: 'seed-req-003', type: 'email_campaign', title: 'Q1 AvBlast editorial calendar review', description: 'Review Q1 AvBlast send calendar with Sydney. Confirm subject lines, segments, and send dates for remaining March sends.', priority: 'P2', status: 'in_progress', requestor: 'sydney', assignee: 'sydney', deadline: '2026-03-28T00:00:00Z', related_brief_id: null, created_date: '2026-03-12T11:00:00Z', updated_date: '2026-03-19T09:00:00Z', notes: '' }
+  ],
   activity: [],
   lastModule: 'command',
   lastUpdated: null
@@ -721,7 +751,462 @@ function ChannelView() {
 }
 
 /* ============================================================
-   PLACEHOLDER VIEWS (Pages 1-7)
+   REQUESTS VIEW (Page 7)
+   ============================================================ */
+function RequestsView() {
+  const nav = useNav();
+  const [requests, setRequests] = useState(Store.get('requests') || []);
+  const [showModal, setShowModal] = useState(false);
+  const [triageId, setTriageId] = useState(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [filters, setFilters] = useState({ type: 'all', status: 'all', priority: 'all', assignee: 'all', search: '' });
+  const [sortCol, setSortCol] = useState('created_date');
+  const [sortAsc, setSortAsc] = useState(false);
+
+  function reload() { setRequests([...(Store.get('requests') || [])]); }
+
+  // Business days calculation
+  function businessDays(fromDate) {
+    const from = new Date(fromDate);
+    const now = new Date();
+    let count = 0;
+    const d = new Date(from);
+    while (d < now) {
+      d.setDate(d.getDate() + 1);
+      const day = d.getDay();
+      if (day !== 0 && day !== 6) count++;
+    }
+    return count;
+  }
+
+  function isOverdue(req) {
+    return req.deadline && new Date(req.deadline) < new Date() && !['complete','archived'].includes(req.status);
+  }
+
+  function isStale(req) {
+    return ['submitted','triaged'].includes(req.status) && businessDays(req.updated_date) > 5;
+  }
+
+  // Filter + sort
+  let filtered = requests.filter(r => showArchived ? true : r.status !== 'archived');
+  if (filters.type !== 'all') filtered = filtered.filter(r => r.type === filters.type);
+  if (filters.status !== 'all') filtered = filtered.filter(r => r.status === filters.status);
+  if (filters.priority !== 'all') filtered = filtered.filter(r => r.priority === filters.priority);
+  if (filters.assignee !== 'all') filtered = filtered.filter(r => r.assignee === filters.assignee);
+  if (filters.search.length >= 2) {
+    const q = filters.search.toLowerCase();
+    filtered = filtered.filter(r => r.title.toLowerCase().includes(q) || (r.description || '').toLowerCase().includes(q));
+  }
+
+  filtered.sort((a, b) => {
+    let va = a[sortCol], vb = b[sortCol];
+    if (sortCol === 'age') { va = businessDays(a.created_date); vb = businessDays(b.created_date); }
+    if (sortCol === 'priority') { const order = { P0:0,P1:1,P2:2,P3:3 }; va = order[a.priority]; vb = order[b.priority]; }
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+
+  function handleSort(col) {
+    if (sortCol === col) setSortAsc(!sortAsc);
+    else { setSortCol(col); setSortAsc(false); }
+    logEvent('requests_filtered', { filter_type: 'sort', filter_value: col });
+  }
+
+  // Status cycle
+  function cycleStatus(req) {
+    const idx = STATUS_ORDER.indexOf(req.status);
+    if (idx === -1 || idx >= STATUS_ORDER.length - 1) return;
+    const next = STATUS_ORDER[idx + 1];
+    Store.update('requests', req.id, { status: next, updated_date: new Date().toISOString() });
+    logEvent('request_status_changed', { request_id: req.id, from_status: req.status, to_status: next });
+    if (next === 'blocked') {
+      const mailto = `mailto:casey.jones@globalair.com?subject=${encodeURIComponent(`BLOCKED: ${req.title}`)}&body=${encodeURIComponent(`${req.assignee || 'Someone'} marked this ${req.type} request as blocked.\nNotes: ${req.notes || 'None'}`)}`;
+      window.open(mailto, '_blank');
+    }
+    if (next === 'complete') {
+      const email = TEAM_EMAILS[req.requestor] || '';
+      if (email) {
+        const mailto = `mailto:${email}?subject=${encodeURIComponent(`Complete: ${req.title}`)}&body=${encodeURIComponent(`Your ${req.type.replace(/_/g,' ')} request has been completed.`)}`;
+        window.open(mailto, '_blank');
+      }
+    }
+    Store.logActivity('status_changed', `${req.title}: ${req.status} → ${next}`);
+    reload();
+  }
+
+  // Archive all completed
+  function archiveAll() {
+    const completed = requests.filter(r => r.status === 'complete');
+    if (completed.length === 0) return;
+    completed.forEach(r => Store.update('requests', r.id, { status: 'archived', updated_date: new Date().toISOString() }));
+    nav.showToast(`${completed.length} request${completed.length > 1 ? 's' : ''} archived.`, 'success');
+    reload();
+  }
+
+  const completedCount = requests.filter(r => r.status === 'complete').length;
+  const hasActiveFilters = filters.type !== 'all' || filters.status !== 'all' || filters.priority !== 'all' || filters.assignee !== 'all' || filters.search.length >= 2;
+
+  // Priority badge
+  function PriorityBadge({ p }) {
+    const colors = { P0: 'var(--red)', P1: 'var(--amber)', P2: 'var(--blue)', P3: 'var(--muted)' };
+    return createElement('span', { role: 'note', 'aria-label': `Priority: ${p}`, style: {
+      fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 3,
+      background: `${colors[p]}22`, color: colors[p], letterSpacing: '0.03em'
+    }}, p);
+  }
+
+  // Status badge
+  function StatusBadgeReq({ status, onClick }) {
+    const s = REQUEST_STATUSES.find(x => x.id === status) || { label: status, color: 'var(--muted)' };
+    return createElement('button', { onClick, style: {
+      fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 3, border: 'none',
+      background: `${s.color}22`, color: s.color, cursor: onClick ? 'pointer' : 'default',
+      letterSpacing: '0.03em', textTransform: 'uppercase'
+    }}, s.label);
+  }
+
+  // Type badge
+  function TypeBadge({ type }) {
+    const t = REQUEST_TYPES.find(x => x.id === type) || { label: type, color: 'var(--muted)' };
+    return createElement('span', { style: {
+      fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 3,
+      background: `${t.color}15`, color: t.color
+    }}, t.label);
+  }
+
+  // Team member display
+  function teamName(key) {
+    const names = { casey:'Casey', keaton:'Keaton', sydney:'Sydney', jadda:'Jadda', abby:'Abby', ashley:'Ashley' };
+    return names[key] || key || '—';
+  }
+
+  // Select dropdown helper
+  function FilterSelect({ value, onChange, options, label }) {
+    return createElement('select', {
+      value, onChange: e => { onChange(e.target.value); logEvent('requests_filtered', { filter_type: label, filter_value: e.target.value }); },
+      style: { background: 'var(--navy-light)', color: 'var(--muted-light)', border: '1px solid rgba(71,130,211,0.12)',
+        borderRadius: 4, padding: '5px 8px', fontSize: 11, outline: 'none' }
+    }, ...options.map(o => createElement('option', { key: o.value, value: o.value }, o.label)));
+  }
+
+  // Triage panel
+  function TriagePanel({ req }) {
+    const [assignee, setAssignee] = useState(REQUEST_ASSIGNEE_DEFAULTS[req.type] || 'casey');
+    const [priority, setPriority] = useState(req.priority);
+    const [notes, setNotes] = useState(req.notes || '');
+
+    function confirm() {
+      const changed = priority !== req.priority;
+      Store.update('requests', req.id, { status: 'triaged', assignee, priority, notes, updated_date: new Date().toISOString() });
+      logEvent('request_triaged', { request_id: req.id, priority_changed: changed });
+      Store.logActivity('triaged', `${req.title} → ${teamName(assignee)}`);
+      setTriageId(null);
+      reload();
+    }
+
+    return (
+      <tr><td colSpan={9} style={{ padding: 0 }}>
+        <div role="region" aria-label={`Triage request: ${req.title}`}
+          style={{ background: 'rgba(71,130,211,0.04)', padding: 12, borderTop: '1px solid rgba(71,130,211,0.1)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 4 }}>Assignee</div>
+              <select value={assignee} onChange={e => setAssignee(e.target.value)}
+                style={{ width: '100%', background: 'var(--navy)', color: 'var(--white)', border: '1px solid rgba(71,130,211,0.15)', borderRadius: 4, padding: '5px 8px', fontSize: 12 }}>
+                {Object.keys(TEAM_EMAILS).map(k => <option key={k} value={k}>{teamName(k)}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 4 }}>Priority Override</div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {['P0','P1','P2','P3'].map(p => (
+                  <button key={p} onClick={() => setPriority(p)}
+                    style={{
+                      flex: 1, padding: '4px 0', fontSize: 10, fontWeight: 700, borderRadius: 3, border: 'none',
+                      background: priority === p ? { P0:'var(--red)',P1:'var(--amber)',P2:'var(--blue)',P3:'var(--muted)' }[p] : 'rgba(71,130,211,0.08)',
+                      color: priority === p ? '#fff' : 'var(--muted)'
+                    }}>{p}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: 4 }}>Notes</div>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+                style={{ width: '100%', background: 'var(--navy)', color: 'var(--white)', border: '1px solid rgba(71,130,211,0.15)', borderRadius: 4, padding: '5px 8px', fontSize: 11, resize: 'none' }} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button onClick={() => setTriageId(null)}
+              style={{ background: 'none', border: '1px solid rgba(71,130,211,0.15)', color: 'var(--muted)', borderRadius: 4, padding: '5px 14px', fontSize: 11 }}>Cancel</button>
+            <button onClick={confirm}
+              style={{ background: 'var(--green)', color: 'var(--navy-deep)', border: 'none', borderRadius: 4, padding: '5px 14px', fontSize: 11, fontWeight: 700 }}>Confirm Triage</button>
+          </div>
+        </div>
+      </td></tr>
+    );
+  }
+
+  // New Request Modal
+  function NewRequestModal() {
+    const [type, setType] = useState('');
+    const [title, setTitle] = useState('');
+    const [desc, setDesc] = useState('');
+    const [priority, setPriority] = useState('');
+    const [deadline, setDeadline] = useState('');
+    const [briefId, setBriefId] = useState('');
+    const canSubmit = type && title.trim() && priority;
+
+    function submit() {
+      const req = {
+        id: generateId(), type, title: title.trim(), description: desc.trim(), priority, status: 'submitted',
+        requestor: 'keaton', assignee: null,
+        deadline: deadline ? new Date(deadline).toISOString() : null,
+        related_brief_id: briefId.trim() || null,
+        created_date: new Date().toISOString(), updated_date: new Date().toISOString(), notes: ''
+      };
+      Store.push('requests', req);
+      logEvent('request_submitted', { request_type: type, priority, has_deadline: !!deadline });
+      Store.logActivity('request_submitted', `New ${type}: ${title}`);
+
+      // mailto to Casey
+      const typeLabel = REQUEST_TYPES.find(t => t.id === type)?.label || type;
+      const subject = `New ${typeLabel} Request: ${title}`;
+      const body = `Type: ${typeLabel}\nTitle: ${title}\nDescription: ${desc}\nPriority: ${priority}\nDeadline: ${deadline || 'None'}\nRelated Brief: ${briefId || 'None'}`;
+      const mailto = `mailto:casey.jones@globalair.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(mailto, '_blank');
+
+      setShowModal(false);
+      reload();
+      nav.showToast('Request submitted successfully.', 'success');
+    }
+
+    return (
+      <div role="dialog" aria-modal="true" onClick={e => { if (e.target === e.currentTarget) setShowModal(false); }}
+        style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000 }}>
+        <div style={{ background:'var(--navy)',borderRadius:10,border:'1px solid rgba(71,130,211,0.12)',padding:24,width:'100%',maxWidth:540 }}
+          onClick={e => e.stopPropagation()}>
+          <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:16,color:'var(--white)',marginBottom:16 }}>New Request</div>
+
+          {/* Type */}
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:10,color:'var(--muted)',textTransform:'uppercase',fontWeight:700,marginBottom:4 }}>Type</div>
+            <select value={type} onChange={e => setType(e.target.value)}
+              style={{ width:'100%',background:'var(--navy-light)',color:'var(--white)',border:'1px solid rgba(71,130,211,0.15)',borderRadius:4,padding:'7px 10px',fontSize:13 }}>
+              <option value="">Select type...</option>
+              {REQUEST_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          </div>
+
+          {/* Title */}
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:10,color:'var(--muted)',textTransform:'uppercase',fontWeight:700,marginBottom:4 }}>Title *</div>
+            <input value={title} onChange={e => setTitle(e.target.value)} maxLength={120}
+              style={{ width:'100%',background:'var(--navy-light)',color:'var(--white)',border:'1px solid rgba(71,130,211,0.15)',borderRadius:4,padding:'7px 10px',fontSize:13 }} />
+          </div>
+
+          {/* Description */}
+          <div style={{ marginBottom:12 }}>
+            <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4 }}>
+              <div style={{ fontSize:10,color:'var(--muted)',textTransform:'uppercase',fontWeight:700 }}>Description</div>
+              <div style={{ fontSize:11,color: desc.length >= 500 ? 'var(--red)' : 'var(--muted)' }}>{desc.length}/500</div>
+            </div>
+            <textarea value={desc} onChange={e => { if (e.target.value.length <= 500) setDesc(e.target.value); }} rows={3}
+              style={{ width:'100%',background:'var(--navy-light)',color:'var(--white)',border:'1px solid rgba(71,130,211,0.15)',borderRadius:4,padding:'7px 10px',fontSize:13,resize:'none' }} />
+          </div>
+
+          {/* Priority */}
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:10,color:'var(--muted)',textTransform:'uppercase',fontWeight:700,marginBottom:4 }}>Priority *</div>
+            <div style={{ display:'flex',gap:6 }}>
+              {['P0','P1','P2','P3'].map(p => (
+                <button key={p} onClick={() => setPriority(p)}
+                  style={{
+                    flex:1,padding:'7px 0',fontSize:12,fontWeight:700,borderRadius:4,border:'none',
+                    background: priority === p ? { P0:'var(--red)',P1:'var(--amber)',P2:'var(--blue)',P3:'var(--muted)' }[p] : 'var(--navy-light)',
+                    color: priority === p ? '#fff' : 'var(--muted-light)'
+                  }}>{p}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Deadline + Related Brief */}
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16 }}>
+            <div>
+              <div style={{ fontSize:10,color:'var(--muted)',textTransform:'uppercase',fontWeight:700,marginBottom:4 }}>Deadline (optional)</div>
+              <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)}
+                style={{ width:'100%',background:'var(--navy-light)',color:'var(--white)',border:'1px solid rgba(71,130,211,0.15)',borderRadius:4,padding:'7px 10px',fontSize:12 }} />
+            </div>
+            <div>
+              <div style={{ fontSize:10,color:'var(--muted)',textTransform:'uppercase',fontWeight:700,marginBottom:4 }}>Related Brief ID</div>
+              <input value={briefId} onChange={e => setBriefId(e.target.value)} placeholder="e.g. brief-abc123"
+                style={{ width:'100%',background:'var(--navy-light)',color:'var(--white)',border:'1px solid rgba(71,130,211,0.15)',borderRadius:4,padding:'7px 10px',fontSize:12 }} />
+            </div>
+          </div>
+
+          {/* Submit */}
+          <button onClick={submit} disabled={!canSubmit}
+            style={{ width:'100%',background: canSubmit ? 'var(--green)' : 'var(--navy-light)',
+              color: canSubmit ? 'var(--navy-deep)' : 'var(--muted)',
+              border:'none',borderRadius:4,padding:'10px',fontSize:13,fontWeight:700 }}>
+            Submit Request
+          </button>
+          <div style={{ fontSize:11,fontStyle:'italic',color:'var(--muted)',textAlign:'center',marginTop:8 }}>
+            A mailto will open to notify Casey of this request.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding:20,overflowY:'auto',height:'100%' }}>
+      {/* Header */}
+      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16 }}>
+        <div>
+          <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:18,color:'var(--white)' }}>Requests</div>
+          <div style={{ fontSize:11,color:'var(--muted)',marginTop:2 }}>Team request intake, triage, and status tracking</div>
+        </div>
+        <div style={{ display:'flex',gap:8 }}>
+          <button onClick={() => setShowArchived(!showArchived)}
+            style={{ background: showArchived ? 'rgba(71,130,211,0.12)' : 'transparent', color:'var(--muted-light)',
+              border:'1px solid rgba(71,130,211,0.12)',borderRadius:4,padding:'6px 12px',fontSize:11 }}>
+            {showArchived ? 'Hide Archived' : 'Show Archived'}
+          </button>
+          <button onClick={archiveAll} disabled={completedCount === 0}
+            title={completedCount === 0 ? 'No completed requests to archive' : ''}
+            style={{ background:'transparent',color: completedCount > 0 ? 'var(--muted-light)' : 'var(--muted)',
+              border:'1px solid rgba(71,130,211,0.12)',borderRadius:4,padding:'6px 12px',fontSize:11,
+              opacity: completedCount === 0 ? 0.4 : 1 }}>
+            Archive Completed ({completedCount})
+          </button>
+          <button onClick={() => setShowModal(true)}
+            style={{ background:'var(--green)',color:'var(--navy-deep)',border:'none',borderRadius:4,padding:'6px 16px',fontSize:12,fontWeight:700 }}>
+            + New Request
+          </button>
+        </div>
+      </div>
+
+      {/* Filter bar */}
+      <div style={{ display:'flex',gap:8,alignItems:'center',marginBottom:14,flexWrap:'wrap' }}>
+        <FilterSelect value={filters.type} onChange={v => setFilters({...filters, type: v})} label="type"
+          options={[{value:'all',label:'All Types'}, ...REQUEST_TYPES.map(t => ({value:t.id,label:t.label}))]} />
+        <FilterSelect value={filters.status} onChange={v => setFilters({...filters, status: v})} label="status"
+          options={[{value:'all',label:'All Status'}, ...REQUEST_STATUSES.filter(s => s.id !== 'archived').map(s => ({value:s.id,label:s.label}))]} />
+        <FilterSelect value={filters.priority} onChange={v => setFilters({...filters, priority: v})} label="priority"
+          options={[{value:'all',label:'All Priority'}, {value:'P0',label:'P0'},{value:'P1',label:'P1'},{value:'P2',label:'P2'},{value:'P3',label:'P3'}]} />
+        <FilterSelect value={filters.assignee} onChange={v => setFilters({...filters, assignee: v})} label="assignee"
+          options={[{value:'all',label:'All Assignees'}, ...Object.keys(TEAM_EMAILS).map(k => ({value:k,label:teamName(k)}))]} />
+        <input value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} placeholder="Search title/description..."
+          style={{ background:'var(--navy-light)',color:'var(--white)',border:'1px solid rgba(71,130,211,0.12)',
+            borderRadius:4,padding:'5px 10px',fontSize:11,flex:1,minWidth:140,outline:'none' }} />
+        {hasActiveFilters && (
+          <button onClick={() => setFilters({ type:'all',status:'all',priority:'all',assignee:'all',search:'' })}
+            style={{ background:'none',border:'none',color:'var(--blue)',fontSize:11,cursor:'pointer',textDecoration:'underline' }}>
+            Clear Filters
+          </button>
+        )}
+      </div>
+
+      {/* Table */}
+      <div style={{ background:'var(--navy-light)',borderRadius:8,border:'1px solid rgba(71,130,211,0.08)',overflow:'hidden' }}>
+        <table role="table" style={{ width:'100%',borderCollapse:'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom:'1px solid rgba(71,130,211,0.1)' }}>
+              {[
+                { key:'type', label:'Type', w:'12%' },
+                { key:'title', label:'Title', w:'22%' },
+                { key:'priority', label:'Priority', w:'8%' },
+                { key:'status', label:'Status', w:'10%' },
+                { key:'requestor', label:'From', w:'9%' },
+                { key:'assignee', label:'Owner', w:'9%' },
+                { key:'deadline', label:'Deadline', w:'12%' },
+                { key:'age', label:'Age', w:'7%' },
+                { key:'actions', label:'', w:'11%' }
+              ].map(col => (
+                <th key={col.key} role="columnheader"
+                  aria-sort={sortCol === col.key ? (sortAsc ? 'ascending' : 'descending') : 'none'}
+                  onClick={() => col.key !== 'actions' && handleSort(col.key)}
+                  style={{
+                    padding:'8px 10px',fontSize:10,fontWeight:700,textTransform:'uppercase',textAlign:'left',
+                    color: sortCol === col.key ? 'var(--blue)' : 'var(--muted)',
+                    cursor: col.key !== 'actions' ? 'pointer' : 'default',
+                    width: col.w,
+                    borderBottom: sortCol === col.key ? '2px solid var(--blue)' : 'none'
+                  }}>
+                  {col.label} {sortCol === col.key ? (sortAsc ? '▲' : '▼') : ''}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr><td colSpan={9} style={{ padding:40,textAlign:'center',color:'var(--muted)',fontSize:12 }}>
+                {hasActiveFilters ? (
+                  <div>No requests match the active filters. <button onClick={() => setFilters({type:'all',status:'all',priority:'all',assignee:'all',search:''})}
+                    style={{background:'none',border:'none',color:'var(--blue)',fontSize:12,cursor:'pointer',textDecoration:'underline'}}>Clear Filters</button></div>
+                ) : 'No requests yet. Click "+ New Request" to get started.'}
+              </td></tr>
+            ) : filtered.map(req => {
+              const age = businessDays(req.created_date);
+              const overdue = isOverdue(req);
+              const stale = isStale(req);
+              const deadlineStr = req.deadline ? new Date(req.deadline).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
+
+              return createElement(Fragment, { key: req.id },
+                <tr style={{
+                  borderBottom:'1px solid rgba(71,130,211,0.06)',
+                  borderLeft: overdue ? '3px solid var(--red)' : req.status === 'submitted' ? '3px solid var(--blue)' : '3px solid transparent',
+                  transition:'background 150ms'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(71,130,211,0.04)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  <td role="cell" style={{ padding:'8px 10px' }}><TypeBadge type={req.type} /></td>
+                  <td role="cell" style={{ padding:'8px 10px',fontSize:12,color:'var(--white)',fontWeight:500 }}>
+                    {req.title}
+                    {req.related_brief_id && (
+                      <button onClick={() => nav.navigate('produce', { highlight_brief_id: req.related_brief_id })}
+                        style={{ marginLeft:6,fontSize:9,color:'var(--blue)',background:'none',border:'none',cursor:'pointer',textDecoration:'underline' }}>
+                        Brief →
+                      </button>
+                    )}
+                  </td>
+                  <td role="cell" style={{ padding:'8px 10px' }}><PriorityBadge p={req.priority} /></td>
+                  <td role="cell" style={{ padding:'8px 10px' }}>
+                    <StatusBadgeReq status={req.status} onClick={req.status !== 'archived' ? () => cycleStatus(req) : null} />
+                  </td>
+                  <td role="cell" style={{ padding:'8px 10px',fontSize:11,color:'var(--muted-light)' }}>{teamName(req.requestor)}</td>
+                  <td role="cell" style={{ padding:'8px 10px',fontSize:11,color:'var(--muted-light)' }}>{teamName(req.assignee)}</td>
+                  <td role="cell" style={{ padding:'8px 10px',fontSize:11,color: overdue ? 'var(--red)' : 'var(--muted-light)',fontWeight: overdue ? 700 : 400 }}>
+                    {overdue ? `OVERDUE ${deadlineStr}` : deadlineStr}
+                  </td>
+                  <td role="cell" style={{ padding:'8px 10px',fontSize:11,color: stale ? 'var(--amber)' : 'var(--muted-light)',fontWeight: stale ? 700 : 400 }}>
+                    {age}d
+                  </td>
+                  <td role="cell" style={{ padding:'8px 10px' }}>
+                    {req.status === 'submitted' && (
+                      <button onClick={() => setTriageId(triageId === req.id ? null : req.id)}
+                        style={{ fontSize:10,color:'var(--green)',background:'none',border:'1px solid var(--green)',borderRadius:3,padding:'3px 10px',cursor:'pointer' }}>
+                        Triage
+                      </button>
+                    )}
+                  </td>
+                </tr>,
+                triageId === req.id ? <TriagePanel req={req} /> : null
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Modal */}
+      {showModal && <NewRequestModal />}
+    </div>
+  );
+}
+
+/* ============================================================
+   PLACEHOLDER VIEWS (Pages 1-6)
    ============================================================ */
 function PlaceholderView({ viewId }) {
   const meta = VIEWS.find(v => v.id === viewId);
@@ -872,6 +1357,7 @@ function App() {
   function renderView() {
     switch (currentView) {
       case 'channel':  return <ChannelView />;
+      case 'requests': return <RequestsView />;
       case 'settings': return <SettingsView />;
       default:         return <PlaceholderView viewId={currentView} />;
     }
