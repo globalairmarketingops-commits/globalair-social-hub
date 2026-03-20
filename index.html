@@ -270,6 +270,13 @@ const CONTENT_MIX = [
   { type: 'Event/Campaign',target: '~5%',    description: 'AERO, AirVenture, NBAA, seasonal campaigns' }
 ];
 
+const AIRCRAFT_CATEGORIES = {
+  piston: ['Cessna', 'Cirrus', 'Piper', 'Beechcraft', 'Mooney', 'Diamond', 'Bonanza'],
+  turboprop: ['King Air', 'PC-12', 'TBM', 'Pilatus', 'Socata', 'Epic'],
+  jet: ['Citation', 'Gulfstream', 'Challenger', 'Falcon', 'Global', 'Phenom', 'CJ'],
+  helicopter: ['Bell', 'Robinson', 'Airbus', 'Sikorsky', 'Leonardo', 'MD Helicopters']
+};
+
 /* ============================================================
    STORE — localStorage Data Layer
    ============================================================ */
@@ -1891,7 +1898,462 @@ function CommandView() {
 }
 
 /* ============================================================
-   PLACEHOLDER VIEWS (Pages 2-6)
+   PLAN VIEW (Page 2)
+   ============================================================ */
+function PlanView() {
+  const nav = useNav();
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedBrief, setSelectedBrief] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [filters, setFilters] = useState({ platform: 'all', bucket: 'all', category: 'all', stage: 'all', owner: 'all', lane: 'all' });
+  const [savedViews, setSavedViews] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('plan_saved_views') || '[]'); } catch(e) { return []; }
+  });
+  const [savedViewName, setSavedViewName] = useState('');
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [tick, setTick] = useState(0);
+
+  const cardStyle = { background: 'var(--navy-light)', border: '1px solid rgba(71,130,211,0.1)', borderRadius: 6, padding: 14 };
+  const sectionTitle = { fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--white)', marginBottom: 10 };
+  const labelStyle = { fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)' };
+
+  const GATE_KEYS = ['utm_created', 'landing_page_confirmed', 'creative_asset_attached', 'presented_by_confirmed', 'tinyurl_generated', 'copy_reviewed', 'owner_assigned', 'publish_time_locked'];
+  const GATE_LABELS = { utm_created: 'UTM Created', landing_page_confirmed: 'Landing Page Confirmed', creative_asset_attached: 'Creative Asset Attached', presented_by_confirmed: 'Presented By Confirmed', tinyurl_generated: 'TinyURL Generated', copy_reviewed: 'Copy Reviewed', owner_assigned: 'Owner Assigned', publish_time_locked: 'Publish Time Locked' };
+  const PLAT_COLORS = { linkedin: 'var(--pl-linkedin)', facebook: 'var(--pl-facebook)', instagram: 'var(--pl-instagram)', x: 'var(--pl-x)', tiktok: 'var(--pl-tiktok)' };
+  const FILTER_OPTIONS = {
+    platform: ['all', 'linkedin', 'facebook', 'instagram', 'x', 'tiktok'],
+    bucket: ['all', 'market_trends', 'education', 'ownership', 'broker', 'event', 'inventory'],
+    category: ['all', 'jet', 'turboprop', 'piston', 'helicopter'],
+    stage: ['all', 'awareness', 'consideration', 'intent', 'conversion'],
+    owner: ['all', 'casey', 'keaton', 'sydney', 'jadda', 'abby'],
+    lane: ['all', 'green', 'yellow']
+  };
+  const RECURRING = [
+    { id: 'fbo_month', label: 'FBO of the Month', owner: 'abby' },
+    { id: 'ramp_ramble', label: 'Ramp Ramble', owner: 'abby' },
+    { id: 'brokernet_stats', label: 'BrokerNet Stats', owner: 'keaton' },
+    { id: 'fuel_map', label: 'Fuel Price Map', owner: 'keaton' },
+    { id: 'game_winner', label: 'Game Winner', owner: 'keaton' }
+  ];
+
+  function fmtDate(d) {
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+
+  function detectCat(brief) {
+    const txt = ((brief.make||'') + ' ' + (brief.model||'') + ' ' + (brief.aircraft||'')).toLowerCase();
+    for (const [cat, kws] of Object.entries(AIRCRAFT_CATEGORIES)) {
+      for (const kw of kws) { if (txt.includes(kw.toLowerCase())) return cat; }
+    }
+    return 'other';
+  }
+
+  function getRecurring(yr, mo) {
+    const s = Store.get('settings') || {};
+    if (s.recurring_posts === false) return [];
+    const dates = [];
+    const first = new Date(yr, mo, 1);
+    const last = new Date(yr, mo+1, 0);
+    dates.push({ type: RECURRING[0], date: fmtDate(first) });
+    dates.push({ type: RECURRING[3], date: fmtDate(first) });
+    let thuCount = 0;
+    for (let d=1; d<=last.getDate(); d++) {
+      if (new Date(yr,mo,d).getDay()===4) { thuCount++; if(thuCount===4) { dates.push({type:RECURRING[1],date:fmtDate(new Date(yr,mo,d))}); break; } }
+    }
+    let lbd = new Date(last);
+    while (lbd.getDay()===0||lbd.getDay()===6) lbd.setDate(lbd.getDate()-1);
+    dates.push({ type: RECURRING[2], date: fmtDate(lbd) });
+    dates.push({ type: RECURRING[4], date: fmtDate(last) });
+    return dates;
+  }
+
+  // Seed plan briefs on mount
+  useEffect(() => {
+    const bl = Store.get('brief_log') || [];
+    if (!bl.some(b => b.target_date)) {
+      const now = new Date(), y = now.getFullYear(), m = now.getMonth();
+      const seeds = [
+        { id:'plan-s1', aircraft:'2019 Citation CJ4', make:'Citation', model:'CJ4', platform:'linkedin', broker:'JetAviva', status:'published', lane:'green', target_date:fmtDate(new Date(y,m,3)), owner:'keaton', bucket:'inventory', stage:'intent', utm:'utm_source=linkedin&utm_medium=social&utm_campaign=cj4', gates:{utm_created:true,landing_page_confirmed:true,creative_asset_attached:true,presented_by_confirmed:true,tinyurl_generated:true,copy_reviewed:true,owner_assigned:true,publish_time_locked:true}, copy:'Mission-ready CJ4. Presented by JetAviva.' },
+        { id:'plan-s2', aircraft:'2021 Pilatus PC-12 NGX', make:'Pilatus', model:'PC-12', platform:'facebook', broker:'Lone Mountain', status:'published', lane:'green', target_date:fmtDate(new Date(y,m,7)), owner:'keaton', bucket:'inventory', stage:'consideration', utm:'utm_source=facebook&utm_medium=social&utm_campaign=pc12', gates:{utm_created:true,landing_page_confirmed:true,creative_asset_attached:true,presented_by_confirmed:true,tinyurl_generated:true,copy_reviewed:true,owner_assigned:true,publish_time_locked:true}, copy:'Versatile turboprop. Presented by Lone Mountain.' },
+        { id:'plan-s3', aircraft:'2015 Gulfstream G280', make:'Gulfstream', model:'G280', platform:'linkedin', broker:'Avpro Inc', status:'published', lane:'green', target_date:fmtDate(new Date(y,m,10)), owner:'casey', bucket:'inventory', stage:'intent', utm:'utm_source=linkedin&utm_medium=social&utm_campaign=g280', gates:{utm_created:true,landing_page_confirmed:true,creative_asset_attached:true,presented_by_confirmed:true,tinyurl_generated:true,copy_reviewed:true,owner_assigned:true,publish_time_locked:true}, copy:'Super-mid with transcontinental range. Presented by Avpro.' },
+        { id:'plan-s4', aircraft:'2018 Cessna 182T', make:'Cessna', model:'182T', platform:'facebook', broker:'Midwest Aircraft', status:'scheduled', lane:'green', target_date:fmtDate(new Date(y,m,14)), owner:'keaton', bucket:'inventory', stage:'awareness', utm:'utm_source=facebook&utm_medium=social', gates:{utm_created:true,landing_page_confirmed:true,creative_asset_attached:true,presented_by_confirmed:true,tinyurl_generated:true,copy_reviewed:true,owner_assigned:true,publish_time_locked:false}, copy:'Glass panel Skylane. Presented by Midwest Aircraft.' },
+        { id:'plan-s5', aircraft:'2020 Bell 505', make:'Bell', model:'505', platform:'instagram', broker:'Rotorcraft Leasing', status:'scheduled', lane:'green', target_date:fmtDate(new Date(y,m,18)), owner:'keaton', bucket:'inventory', stage:'consideration', utm:'utm_source=instagram&utm_medium=social', gates:{utm_created:true,landing_page_confirmed:true,creative_asset_attached:true,presented_by_confirmed:false,tinyurl_generated:true,copy_reviewed:true,owner_assigned:true,publish_time_locked:false}, copy:'Turbine helicopter. Presented by Rotorcraft Leasing.' },
+        { id:'plan-s6', aircraft:'2017 Cirrus SR22T', make:'Cirrus', model:'SR22T', platform:'x', broker:'Cirrus Aircraft', status:'draft', lane:'green', target_date:fmtDate(new Date(y,m,20)), owner:'casey', bucket:'inventory', stage:'awareness', utm:'', gates:{utm_created:false,landing_page_confirmed:true,creative_asset_attached:true,presented_by_confirmed:true,tinyurl_generated:false,copy_reviewed:false,owner_assigned:true,publish_time_locked:false}, copy:'Turbo piston with CAPS. Presented by Cirrus.' },
+        { id:'plan-s7', aircraft:'2022 King Air 350i', make:'King Air', model:'350i', platform:'linkedin', broker:'Textron', status:'draft', lane:'green', target_date:fmtDate(new Date(y,m,24)), owner:'sydney', bucket:'market_trends', stage:'consideration', utm:'', gates:{utm_created:false,landing_page_confirmed:false,creative_asset_attached:true,presented_by_confirmed:true,tinyurl_generated:false,copy_reviewed:false,owner_assigned:true,publish_time_locked:false}, copy:'Twin turboprop workhorse. Presented by Textron.' },
+        { id:'plan-s8', aircraft:'2016 Phenom 300', make:'Phenom', model:'300', platform:'facebook', broker:'Guardian Jet', status:'draft', lane:'yellow', target_date:fmtDate(new Date(y,m,22)), owner:'keaton', bucket:'inventory', stage:'intent', utm:'utm_source=facebook', gates:{utm_created:true,landing_page_confirmed:true,creative_asset_attached:true,presented_by_confirmed:false,tinyurl_generated:false,copy_reviewed:false,owner_assigned:true,publish_time_locked:false}, copy:'Light jet leader. Presented by Guardian Jet.' }
+      ];
+      const existing = new Set((Store.get('brief_log')||[]).map(b=>b.id));
+      seeds.forEach(s => { if (!existing.has(s.id)) Store.push('brief_log', s); });
+    }
+    logEvent('plan_view_loaded', {});
+  }, []);
+
+  // Read data
+  const allBriefs = (Store.get('brief_log') || []).filter(b => b.target_date);
+  const year = currentDate.getFullYear(), month = currentDate.getMonth();
+  const monthName = currentDate.toLocaleString('default', { month: 'long' });
+  const todayStr = fmtDate(new Date());
+  const recurring = getRecurring(year, month);
+
+  // Filter
+  const filtered = allBriefs.filter(b => {
+    if (filters.platform !== 'all' && b.platform !== filters.platform) return false;
+    if (filters.bucket !== 'all' && b.bucket !== filters.bucket) return false;
+    if (filters.category !== 'all' && detectCat(b) !== filters.category) return false;
+    if (filters.stage !== 'all' && b.stage !== filters.stage) return false;
+    if (filters.owner !== 'all' && b.owner !== filters.owner) return false;
+    if (filters.lane !== 'all' && b.lane !== filters.lane) return false;
+    return true;
+  });
+
+  // Group by date
+  const byDate = {};
+  filtered.forEach(b => { if (!byDate[b.target_date]) byDate[b.target_date]=[]; byDate[b.target_date].push(b); });
+
+  // Calendar cells
+  const firstOfMonth = new Date(year, month, 1);
+  const lastOfMonth = new Date(year, month+1, 0);
+  const startPad = (firstOfMonth.getDay()+6) % 7;
+  const cells = [];
+  const prevLast = new Date(year, month, 0);
+  for (let i = startPad-1; i >= 0; i--) { const d = prevLast.getDate()-i; const dt = new Date(year,month-1,d); cells.push({date:dt, ds:fmtDate(dt), inMonth:false, day:d}); }
+  for (let d = 1; d <= lastOfMonth.getDate(); d++) { const dt = new Date(year,month,d); cells.push({date:dt, ds:fmtDate(dt), inMonth:true, day:d}); }
+  const rem = 7 - (cells.length % 7); if (rem < 7) for (let d=1; d<=rem; d++) { const dt = new Date(year,month+1,d); cells.push({date:dt, ds:fmtDate(dt), inMonth:false, day:d}); }
+
+  // Capacity
+  const monthBriefs = allBriefs.filter(b => { const d = b.target_date; return d && d.startsWith(year+'-'+String(month+1).padStart(2,'0')); });
+  const total = monthBriefs.length || 1;
+  const pilotDirect = monthBriefs.filter(b => b.bucket === 'inventory' || b.stage === 'intent').length;
+  const pdPct = Math.round((pilotDirect/total)*100);
+  const platCounts = {}; monthBriefs.forEach(b => { platCounts[b.platform] = (platCounts[b.platform]||0)+1; });
+  const catCounts = {jet:0,turboprop:0,piston:0,helicopter:0}; monthBriefs.forEach(b => { const c = detectCat(b); if(catCounts[c]!==undefined) catCounts[c]++; });
+  const yellowBriefs = monthBriefs.filter(b => b.lane === 'yellow');
+
+  function gateCount(gates) { return GATE_KEYS.filter(k => gates && gates[k]).length; }
+  function hasActive() { return Object.values(filters).some(v => v !== 'all'); }
+
+  function openDrawer(brief, isRec) { setSelectedBrief({...brief, _rec: isRec}); setDrawerOpen(true); logEvent(isRec ? 'recurring_post_pill_clicked' : 'calendar_pill_clicked', { id: brief.id || brief.type?.id }); }
+  function closeDrawer() { setDrawerOpen(false); setSelectedBrief(null); }
+  useEffect(() => { function h(e) { if(e.key==='Escape'&&drawerOpen) closeDrawer(); } document.addEventListener('keydown',h); return ()=>document.removeEventListener('keydown',h); }, [drawerOpen]);
+
+  function toggleGate(id, gk) {
+    const bl = Store.get('brief_log') || [];
+    const b = bl.find(x => x.id === id);
+    if (!b || b.status === 'published') return;
+    const gates = {...(b.gates||{})}; gates[gk] = !gates[gk];
+    Store.update('brief_log', id, { gates });
+    logEvent('readiness_gate_checked', { id, gate: gk });
+    if (GATE_KEYS.filter(k => gates[k]).length === 8) { logEvent('post_ready_to_schedule', { id }); nav.showToast('All gates cleared — ready to schedule', 'success'); }
+    setSelectedBrief(prev => prev ? {...prev, gates} : prev);
+    setTick(t => t+1);
+  }
+
+  function markReviewed(id) {
+    Store.update('brief_log', id, { lane: 'green' });
+    logEvent('yellow_lane_reviewed', { id });
+    nav.showToast('Moved to GREEN lane', 'success');
+    setSelectedBrief(prev => prev ? {...prev, lane: 'green'} : prev);
+    setTick(t => t+1);
+  }
+
+  function setFilter(k, v) { setFilters(prev => ({...prev, [k]: v})); logEvent('filter_applied', {key:k,value:v}); }
+  function clearAll() { setFilters({platform:'all',bucket:'all',category:'all',stage:'all',owner:'all',lane:'all'}); }
+  function saveView() {
+    if (!savedViewName.trim()) return;
+    if (savedViews.length >= 5) { nav.showToast('Max 5 saved views', 'warning'); return; }
+    const nv = [...savedViews, {name:savedViewName.trim(), filters:{...filters}}];
+    setSavedViews(nv); localStorage.setItem('plan_saved_views', JSON.stringify(nv));
+    setSavedViewName(''); setShowSaveInput(false); nav.showToast('View saved', 'success');
+  }
+  function loadView(i) { if(savedViews[i]) { setFilters(savedViews[i].filters); logEvent('saved_view_loaded',{name:savedViews[i].name}); } }
+  function deleteView(i) { const nv=savedViews.filter((_,j)=>j!==i); setSavedViews(nv); localStorage.setItem('plan_saved_views',JSON.stringify(nv)); }
+
+  function prevMonth() { setCurrentDate(new Date(year,month-1,1)); logEvent('calendar_month_changed',{direction:'prev'}); }
+  function nextMonth() { setCurrentDate(new Date(year,month+1,1)); logEvent('calendar_month_changed',{direction:'next'}); }
+  function goToday() { setCurrentDate(new Date()); }
+
+  const badge = (b) => {
+    const gc = gateCount(b.gates);
+    if (b.status==='published') return {label:'PUBLISHED',bg:'rgba(151,203,0,0.15)',color:'var(--green)'};
+    if (gc===8) return {label:'READY',bg:'rgba(151,203,0,0.15)',color:'var(--green)'};
+    return {label: gc+'/8 GATES',bg:'rgba(232,80,58,0.1)',color:'#ff7060'};
+  };
+
+  // SVG gauge for pilot-direct
+  function PdGauge() {
+    const r=38, circ=2*Math.PI*r, off=circ-(pdPct/100)*circ;
+    const clr = pdPct>=50&&pdPct<=60 ? 'var(--green)' : 'var(--amber)';
+    return (
+      <svg width="90" height="90" style={{display:'block',margin:'0 auto'}}>
+        <circle cx="45" cy="45" r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="7"/>
+        <circle cx="45" cy="45" r={r} fill="none" stroke={clr} strokeWidth="7" strokeDasharray={circ} strokeDashoffset={off} strokeLinecap="round" transform="rotate(-90 45 45)"/>
+        <text x="45" y="42" textAnchor="middle" fill="var(--white)" fontFamily="var(--font-display)" fontWeight="700" fontSize="18">{pdPct}%</text>
+        <text x="45" y="56" textAnchor="middle" fill="var(--muted)" fontSize="7">TARGET 50-60%</text>
+      </svg>
+    );
+  }
+
+  return (
+    <div style={{display:'flex',height:'100%',position:'relative'}}>
+      {/* Main */}
+      <div style={{flex:1,overflowY:'auto',padding:'16px 16px 16px 16px',marginRight:240}}>
+
+        {/* Filter bar */}
+        <div style={{...cardStyle,marginBottom:10,display:'flex',flexWrap:'wrap',alignItems:'center',gap:6}}>
+          {Object.entries(FILTER_OPTIONS).map(([key, opts]) => (
+            <select key={key} value={filters[key]} onChange={e => setFilter(key, e.target.value)}
+              style={{background:'var(--navy-deep)',color:'var(--muted-light)',border:'1px solid rgba(71,130,211,0.2)',borderRadius:4,padding:'4px 6px',fontSize:10,fontFamily:'var(--font-body)'}}>
+              {opts.map(o => <option key={o} value={o}>{o==='all' ? key.charAt(0).toUpperCase()+key.slice(1)+': All' : o.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</option>)}
+            </select>
+          ))}
+          {hasActive() && <span onClick={clearAll} style={{fontSize:10,color:'var(--blue)',cursor:'pointer',textDecoration:'underline'}}>Clear all</span>}
+          <span style={{flex:1}}/>
+          {savedViews.length > 0 && (
+            <select onChange={e => {if(e.target.value!=='') loadView(+e.target.value); e.target.value='';}}
+              style={{background:'var(--navy-deep)',color:'var(--muted)',border:'1px solid rgba(71,130,211,0.2)',borderRadius:4,padding:'4px 6px',fontSize:10}}>
+              <option value="">Saved Views</option>
+              {savedViews.map((v,i) => <option key={i} value={i}>{v.name}</option>)}
+            </select>
+          )}
+          {showSaveInput ? (
+            <Fragment>
+              <input value={savedViewName} onChange={e=>setSavedViewName(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')saveView();}}
+                placeholder="View name..." style={{background:'var(--navy-deep)',color:'var(--white)',border:'1px solid var(--blue)',borderRadius:4,padding:'4px 6px',fontSize:10,width:90}}/>
+              <button onClick={saveView} style={{background:'var(--green)',color:'var(--navy-deep)',border:'none',borderRadius:4,padding:'4px 8px',fontSize:9,fontWeight:700,cursor:'pointer'}}>Save</button>
+              <button onClick={()=>setShowSaveInput(false)} style={{background:'transparent',color:'var(--muted)',border:'none',fontSize:9,cursor:'pointer'}}>Cancel</button>
+            </Fragment>
+          ) : (
+            <button onClick={()=>setShowSaveInput(true)} style={{background:'transparent',color:'var(--blue)',border:'1px solid var(--blue)',borderRadius:4,padding:'4px 8px',fontSize:9,fontWeight:600,cursor:'pointer'}}>Save View</button>
+          )}
+        </div>
+
+        {/* Active chips */}
+        {hasActive() && (
+          <div style={{display:'flex',gap:4,marginBottom:8,flexWrap:'wrap'}}>
+            {Object.entries(filters).filter(([_,v])=>v!=='all').map(([k,v]) => (
+              <span key={k} style={{background:'rgba(71,130,211,0.15)',color:'var(--blue)',fontSize:9,padding:'2px 8px',borderRadius:10,display:'inline-flex',alignItems:'center',gap:3}}>
+                {v.replace(/_/g,' ')}
+                <span onClick={()=>setFilter(k,'all')} style={{cursor:'pointer',color:'var(--muted)',fontWeight:700}}>×</span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Calendar header */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <button onClick={prevMonth} style={{background:'var(--navy-light)',color:'var(--white)',border:'1px solid rgba(71,130,211,0.15)',borderRadius:4,padding:'4px 10px',cursor:'pointer',fontSize:14}}>◀</button>
+            <span style={{fontFamily:'var(--font-display)',fontWeight:700,fontSize:18,color:'var(--white)'}}>{monthName} {year}</span>
+            <button onClick={nextMonth} style={{background:'var(--navy-light)',color:'var(--white)',border:'1px solid rgba(71,130,211,0.15)',borderRadius:4,padding:'4px 10px',cursor:'pointer',fontSize:14}}>▶</button>
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            <button onClick={goToday} style={{background:'var(--green)',color:'var(--navy-deep)',border:'none',borderRadius:4,padding:'5px 12px',fontSize:10,fontWeight:700,cursor:'pointer'}}>Today</button>
+            <button onClick={()=>{logEvent('new_post_shortcut_clicked',{}); nav.navigate('produce',{open_modal:'new_brief'});}}
+              style={{background:'var(--blue)',color:'var(--white)',border:'none',borderRadius:4,padding:'5px 12px',fontSize:10,fontWeight:700,cursor:'pointer'}}>+ New Post</button>
+          </div>
+        </div>
+
+        {/* Day headers */}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:1,marginBottom:1}}>
+          {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
+            <div key={d} style={{...labelStyle,textAlign:'center',padding:'6px 0'}}>{d}</div>
+          ))}
+        </div>
+
+        {/* Calendar grid */}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:1}}>
+          {cells.map((cell, idx) => {
+            const isToday = cell.ds === todayStr;
+            const cb = byDate[cell.ds] || [];
+            const cr = recurring.filter(r => r.date === cell.ds);
+            const allItems = [...cr.map(r=>({_rec:true,...r})), ...cb];
+            const maxShow = 4, overflow = allItems.length > maxShow ? allItems.length - maxShow : 0;
+
+            return (
+              <div key={idx} onClick={() => { if(cell.inMonth && cb.length===0 && cr.length===0) { logEvent('new_post_shortcut_clicked',{date:cell.ds}); nav.navigate('produce',{open_modal:'new_brief',target_date:cell.ds}); } }}
+                style={{
+                  background: isToday ? 'rgba(151,203,0,0.04)' : cell.inMonth ? 'var(--navy-light)' : 'var(--navy-deep)',
+                  border: isToday ? '1px solid rgba(151,203,0,0.25)' : '1px solid rgba(71,130,211,0.06)',
+                  borderRadius:4, minHeight:90, padding:'4px 5px', position:'relative',
+                  cursor: (cb.length===0 && cr.length===0 && cell.inMonth) ? 'pointer' : 'default',
+                  opacity: cell.inMonth ? 1 : 0.35
+                }}>
+                <div style={{textAlign:'right',fontSize:11,fontWeight:isToday?700:500,color:isToday?'var(--green)':'var(--muted)',marginBottom:3}}>{cell.day}</div>
+                {allItems.slice(0, maxShow).map((item, i) => {
+                  if (item._rec) {
+                    return (
+                      <div key={'r'+i} onClick={e=>{e.stopPropagation(); openDrawer(item,true);}}
+                        style={{background:'rgba(138,146,168,0.2)',color:'var(--muted)',fontSize:8,padding:'2px 4px',borderRadius:3,marginBottom:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:'pointer'}}>
+                        🔒 {item.type.label}
+                      </div>
+                    );
+                  }
+                  const pc = PLAT_COLORS[item.platform] || 'var(--muted)';
+                  const isYellow = item.lane === 'yellow';
+                  return (
+                    <div key={item.id} onClick={e=>{e.stopPropagation(); openDrawer(item,false);}}
+                      style={{background:pc,color:'var(--white)',fontSize:8,padding:'2px 4px',borderRadius:3,marginBottom:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',cursor:'pointer',fontWeight:600,borderLeft:isYellow?'3px solid var(--amber)':'none'}}>
+                      {(item.aircraft||item.id).substring(0,22)}
+                    </div>
+                  );
+                })}
+                {overflow > 0 && <div style={{fontSize:8,color:'var(--muted)',marginTop:1}}>+{overflow} more</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Capacity Panel */}
+      <div style={{width:240,position:'fixed',right:0,top:'var(--topbar-h)',bottom:0,background:'var(--navy-deep)',borderLeft:'1px solid rgba(71,130,211,0.1)',padding:'12px 10px',overflowY:'auto',zIndex:50}}>
+        <div style={{...sectionTitle,fontSize:11}}>Capacity — {monthName}</div>
+
+        <div style={{...cardStyle,marginBottom:8,textAlign:'center'}}>
+          <div style={{...labelStyle,marginBottom:4}}>Pilot-Direct Mix</div>
+          <PdGauge/>
+        </div>
+
+        <div style={{...cardStyle,marginBottom:8}}>
+          <div style={{...labelStyle,marginBottom:4}}>Platform Breakdown</div>
+          <div style={{display:'flex',height:12,borderRadius:3,overflow:'hidden',marginBottom:6}}>
+            {Object.entries(platCounts).map(([pl,cnt]) => (
+              <div key={pl} title={pl+': '+cnt} style={{width:(cnt/total*100)+'%',background:PLAT_COLORS[pl]||'var(--muted)',minWidth:cnt>0?3:0}}/>
+            ))}
+          </div>
+          {Object.entries(platCounts).map(([pl,cnt]) => (
+            <div key={pl} style={{fontSize:9,color:'var(--muted)',display:'flex',alignItems:'center',gap:4,marginBottom:2}}>
+              <span style={{width:6,height:6,borderRadius:'50%',background:PLAT_COLORS[pl]||'var(--muted)'}}/>
+              {pl} — {cnt}
+            </div>
+          ))}
+        </div>
+
+        <div style={{...cardStyle,marginBottom:8}}>
+          <div style={{...labelStyle,marginBottom:4}}>Category Balance</div>
+          {['jet','turboprop','piston','helicopter'].map(cat => {
+            const cnt = catCounts[cat]||0;
+            const mx = Math.max(1,...Object.values(catCounts));
+            const colors = {jet:'var(--blue)',turboprop:'var(--amber)',piston:'var(--green)',helicopter:'var(--red)'};
+            return (
+              <div key={cat} style={{marginBottom:5}}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:2}}>
+                  <span style={{fontSize:9,color:'var(--muted-light)',textTransform:'capitalize'}}>{cat}</span>
+                  <span style={{fontSize:9,color:'var(--white)',fontWeight:600}}>{cnt}</span>
+                </div>
+                <div style={{background:'rgba(255,255,255,0.06)',borderRadius:2,height:6}}>
+                  <div style={{width:(cnt/mx*100)+'%',height:'100%',background:colors[cat],borderRadius:2,transition:'width 0.3s'}}/>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{...cardStyle,marginBottom:8}}>
+          <div style={{...labelStyle,marginBottom:4}}>Posts This Month</div>
+          <div style={{fontFamily:'var(--font-display)',fontWeight:700,fontSize:24,color:'var(--white)'}}>{monthBriefs.length}</div>
+        </div>
+
+        {yellowBriefs.length > 0 && (
+          <div style={{...cardStyle,borderColor:'rgba(245,158,11,0.3)',marginBottom:8}}>
+            <div style={{...labelStyle,color:'var(--amber)',marginBottom:4}}>Casey Review ({yellowBriefs.length})</div>
+            {yellowBriefs.map(b => (
+              <div key={b.id} onClick={()=>openDrawer(b,false)} style={{fontSize:9,color:'var(--amber)',padding:'3px 0',cursor:'pointer',borderBottom:'1px solid rgba(245,158,11,0.1)'}}>
+                {b.aircraft||b.id}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Drawer backdrop */}
+      {drawerOpen && <div onClick={closeDrawer} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.4)',zIndex:140}}/>}
+
+      {/* Post Detail Drawer */}
+      {drawerOpen && selectedBrief && (
+        <div style={{position:'fixed',top:0,right:0,bottom:0,width:320,background:'var(--navy-deep)',borderLeft:'1px solid rgba(71,130,211,0.15)',zIndex:150,padding:'16px 14px',overflowY:'auto',boxShadow:'-4px 0 20px rgba(0,0,0,0.3)'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+            <span style={{...sectionTitle,marginBottom:0}}>{selectedBrief._rec ? 'Recurring Post' : 'Post Detail'}</span>
+            <button onClick={closeDrawer} style={{background:'transparent',border:'none',color:'var(--muted)',fontSize:18,cursor:'pointer'}}>×</button>
+          </div>
+
+          {selectedBrief._rec ? (
+            <div style={cardStyle}>
+              <div style={{fontWeight:700,color:'var(--white)',fontSize:14,marginBottom:6}}>{selectedBrief.type?.label||'Recurring'}</div>
+              <div style={{fontSize:11,color:'var(--muted)'}}>Owner: {selectedBrief.type?.owner||'—'}</div>
+              <div style={{fontSize:11,color:'var(--muted)',marginTop:4}}>Date: {selectedBrief.date||'—'}</div>
+              <div style={{fontSize:10,color:'var(--muted)',marginTop:8,fontStyle:'italic'}}>Recurring — locked. Edit in Settings.</div>
+            </div>
+          ) : (
+            <div>
+              {/* Yellow banner */}
+              {selectedBrief.lane==='yellow' && (
+                <div style={{background:'rgba(245,158,11,0.12)',border:'1px solid rgba(245,158,11,0.3)',borderRadius:4,padding:'8px 10px',marginBottom:10,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                  <span style={{fontSize:10,color:'var(--amber)',fontWeight:600}}>YELLOW LANE</span>
+                  <button onClick={()=>markReviewed(selectedBrief.id)} style={{background:'var(--amber)',color:'var(--navy-deep)',border:'none',borderRadius:4,padding:'3px 10px',fontSize:9,fontWeight:700,cursor:'pointer'}}>Mark Reviewed</button>
+                </div>
+              )}
+
+              {/* Brief info */}
+              <div style={{...cardStyle,marginBottom:10}}>
+                <div style={{fontWeight:700,color:'var(--white)',fontSize:14,marginBottom:4}}>{selectedBrief.aircraft||'—'}</div>
+                <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:6}}>
+                  <span style={{background:PLAT_COLORS[selectedBrief.platform]||'var(--muted)',color:'var(--white)',fontSize:9,padding:'2px 7px',borderRadius:3,fontWeight:700,textTransform:'uppercase'}}>{selectedBrief.platform}</span>
+                  <span style={{fontSize:9,color:'var(--muted-light)',textTransform:'capitalize'}}>{detectCat(selectedBrief)}</span>
+                </div>
+                {selectedBrief.broker && <div style={{fontSize:11,color:'var(--muted-light)',marginBottom:3}}>Broker: {selectedBrief.broker}</div>}
+                {selectedBrief.owner && <div style={{fontSize:11,color:'var(--muted-light)',marginBottom:3}}>Owner: {selectedBrief.owner}</div>}
+                <div style={{fontSize:11,color:'var(--muted-light)'}}>Date: {selectedBrief.target_date}</div>
+                {selectedBrief.utm && <div style={{fontSize:9,color:'var(--muted)',marginTop:6,wordBreak:'break-all',background:'rgba(0,0,0,0.15)',padding:'4px 6px',borderRadius:3}}>{selectedBrief.utm}</div>}
+              </div>
+
+              {/* Status */}
+              {(() => { const b = badge(selectedBrief); return (
+                <div style={{marginBottom:10}}>
+                  <span style={{background:b.bg,color:b.color,fontSize:9,fontWeight:700,padding:'3px 10px',borderRadius:3,letterSpacing:'0.05em'}}>{b.label}</span>
+                </div>
+              ); })()}
+
+              {/* Gates */}
+              <div style={{...cardStyle,marginBottom:10}}>
+                <div style={{...labelStyle,marginBottom:6}}>Readiness Gates — {gateCount(selectedBrief.gates)}/8</div>
+                <div style={{background:'rgba(255,255,255,0.06)',borderRadius:3,height:5,marginBottom:8}}>
+                  <div style={{width:(gateCount(selectedBrief.gates)/8*100)+'%',height:'100%',background:gateCount(selectedBrief.gates)===8?'var(--green)':'var(--blue)',borderRadius:3,transition:'width 0.3s'}}/>
+                </div>
+                {GATE_KEYS.map(gk => {
+                  const checked = selectedBrief.gates && selectedBrief.gates[gk];
+                  const isPub = selectedBrief.status === 'published';
+                  return (
+                    <label key={gk} style={{display:'flex',alignItems:'center',gap:8,padding:'3px 0',cursor:isPub?'default':'pointer',opacity:isPub?0.7:1}}>
+                      <input type="checkbox" checked={!!checked} disabled={isPub} onChange={()=>toggleGate(selectedBrief.id,gk)} style={{accentColor:'var(--green)'}}/>
+                      <span style={{fontSize:10,color:checked?'var(--green)':'var(--muted-light)'}}>{GATE_LABELS[gk]}</span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              {/* Copy */}
+              {selectedBrief.copy && (
+                <div style={{...cardStyle,marginBottom:10}}>
+                  <div style={{...labelStyle,marginBottom:4}}>Copy Preview</div>
+                  <div style={{fontSize:11,color:'var(--muted-light)',lineHeight:'1.5'}}>{selectedBrief.copy}</div>
+                </div>
+              )}
+
+              {/* Go to Produce */}
+              <button onClick={()=>{closeDrawer(); nav.navigate('produce',{brief_id:selectedBrief.id});}}
+                style={{background:'var(--blue)',color:'var(--white)',border:'none',borderRadius:4,padding:'8px 14px',fontSize:11,fontWeight:600,cursor:'pointer',width:'100%',fontFamily:'var(--font-display)'}}>
+                Go to Brief in Produce
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   PLACEHOLDER VIEWS (Pages 3-6)
    ============================================================ */
 function PlaceholderView({ viewId }) {
   const meta = VIEWS.find(v => v.id === viewId);
@@ -2042,6 +2504,7 @@ function App() {
   function renderView() {
     switch (currentView) {
       case 'command':  return <CommandView />;
+      case 'plan':     return <PlanView />;
       case 'channel':  return <ChannelView />;
       case 'requests': return <RequestsView />;
       case 'settings': return <SettingsView />;
