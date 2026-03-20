@@ -305,7 +305,13 @@ const DEFAULT_STATE = {
   events_list: [],
   wld_entries: [],
   action_queue: [],
-  competitors: [],
+  competitors: [
+    { id:'comp-001', name:'Controller.com', platforms:{ linkedin:{posts_week:8}, facebook:{posts_week:12}, instagram:{posts_week:6}, x:{posts_week:10}, youtube:{posts_week:1}, tiktok:{posts_week:0} }},
+    { id:'comp-002', name:'Trade-A-Plane', platforms:{ linkedin:{posts_week:3}, facebook:{posts_week:8}, instagram:{posts_week:4}, x:{posts_week:5}, youtube:{posts_week:0}, tiktok:{posts_week:0} }},
+    { id:'comp-003', name:'Barnstormers', platforms:{ linkedin:{posts_week:1}, facebook:{posts_week:5}, instagram:{posts_week:2}, x:{posts_week:3}, youtube:{posts_week:0}, tiktok:{posts_week:0} }},
+    { id:'comp-004', name:'AircraftDealer.com', platforms:{ linkedin:{posts_week:2}, facebook:{posts_week:4}, instagram:{posts_week:2}, x:{posts_week:2}, youtube:{posts_week:0}, tiktok:{posts_week:0} }},
+    { id:'comp-005', name:'AOPA Marketplace', platforms:{ linkedin:{posts_week:5}, facebook:{posts_week:10}, instagram:{posts_week:5}, x:{posts_week:7}, youtube:{posts_week:2}, tiktok:{posts_week:1} }}
+  ],
   manual_platform_data: {},
   requests: [
     { id: 'seed-req-001', type: 'design_asset', title: 'NBAA SDC social countdown template', description: 'Need countdown template for NBAA SDC event social posts. 3-slide carousel format for Instagram + single image for LinkedIn/Facebook.', priority: 'P1', status: 'submitted', requestor: 'keaton', assignee: null, deadline: null, related_brief_id: null, created_date: '2026-03-18T10:00:00Z', updated_date: '2026-03-18T10:00:00Z', notes: '' },
@@ -1563,7 +1569,7 @@ function CommandView() {
         })}
         <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 9, color: 'var(--muted)' }}>
           <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--green)', marginRight: 4, verticalAlign: 'middle' }} />GlobalAir.com</span>
-          <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--red)', marginRight: 4, verticalAlign: 'middle' }} />{comp.name}</span>
+          <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--red)', marginRight: 4, verticalAlign: 'middle' }} />{comp?.name || 'Competitor'}</span>
         </div>
       </div>
     );
