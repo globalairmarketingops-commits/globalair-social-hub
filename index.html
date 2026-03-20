@@ -1206,12 +1206,697 @@ function RequestsView() {
 }
 
 /* ============================================================
-   PLACEHOLDER VIEWS (Pages 1-6)
+   COMMAND VIEW (Page 1)
+   ============================================================ */
+function CommandView() {
+  const nav = useNav();
+  const [period, setPeriod] = useState(Store.get('settings.command_period_selection') || '7d');
+  const [manualModal, setManualModal] = useState(null);
+  const [manualForm, setManualForm] = useState({ followers: '', engagement: '', clicks: '' });
+  const [wldText, setWldText] = useState('');
+  const [wldType, setWldType] = useState('WIN');
+  const [aqForm, setAqForm] = useState({ text: '', category: 'FIX', assignee: 'casey' });
+  const [showAqForm, setShowAqForm] = useState(false);
+  const [selectedComp, setSelectedComp] = useState('comp-001');
+  const [sortCol, setSortCol] = useState('platform');
+  const [sortAsc, setSortAsc] = useState(true);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setTick(k => k + 1), 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if ((Store.get('events_list') || []).length === 0) {
+      Store.set('events_list', [{
+        id: 'seed-evt-001', name: 'AERO Friedrichshafen 2026', date: '2026-04-22T00:00:00Z',
+        badge_text: 'Media Partner', post_target: 10, posts_published: 4,
+        drive_folder_url: null, status: 'active'
+      }]);
+    }
+    if ((Store.get('competitors') || []).length === 0) {
+      Store.set('competitors', [
+        { id:'comp-001', name:'Controller.com', platforms:{ linkedin:{posts_week:8}, facebook:{posts_week:12}, instagram:{posts_week:6}, x:{posts_week:10}, youtube:{posts_week:1}, tiktok:{posts_week:0} }},
+        { id:'comp-002', name:'Trade-A-Plane', platforms:{ linkedin:{posts_week:3}, facebook:{posts_week:8}, instagram:{posts_week:4}, x:{posts_week:5}, youtube:{posts_week:0}, tiktok:{posts_week:0} }},
+        { id:'comp-003', name:'Barnstormers', platforms:{ linkedin:{posts_week:1}, facebook:{posts_week:5}, instagram:{posts_week:2}, x:{posts_week:3}, youtube:{posts_week:0}, tiktok:{posts_week:0} }},
+        { id:'comp-004', name:'AircraftDealer.com', platforms:{ linkedin:{posts_week:2}, facebook:{posts_week:4}, instagram:{posts_week:2}, x:{posts_week:2}, youtube:{posts_week:0}, tiktok:{posts_week:0} }},
+        { id:'comp-005', name:'AOPA Marketplace', platforms:{ linkedin:{posts_week:5}, facebook:{posts_week:10}, instagram:{posts_week:5}, x:{posts_week:7}, youtube:{posts_week:2}, tiktok:{posts_week:1} }}
+      ]);
+    }
+    logEvent('command_view_loaded', { period });
+  }, []);
+
+  function changePeriod(p) {
+    setPeriod(p);
+    Store.set('settings.command_period_selection', p);
+    logEvent('command_period_changed', { period: p });
+  }
+
+  const settings = Store.get('settings') || {};
+  const briefLog = Store.get('brief_log') || [];
+  const eventsList = Store.get('events_list') || [];
+  const wldEntries = Store.get('wld_entries') || [];
+  const actionQueue = Store.get('action_queue') || [];
+  const competitors = Store.get('competitors') || [];
+  const manualData = Store.get('manual_platform_data') || {};
+
+  const utmBriefs = briefLog.filter(b => b.utm_link);
+  const utmCoverage = briefLog.length > 0 ? (utmBriefs.length / briefLog.length) * 100 : 100;
+  const alerts = [];
+  if (utmCoverage < 90) alerts.push('UTM coverage below 90% — ' + Math.round(utmCoverage) + '% of briefs have UTM links');
+  if (settings.nbaa_sdc_booth === null || settings.nbaa_sdc_booth === undefined) alerts.push('NBAA SDC booth number unconfirmed — set in Settings');
+  if (!settings.callrail_active) alerts.push('CallRail not active — phone inquiry tracking offline');
+
+  function calcIntegrity() {
+    let score = 0;
+    if (settings.callrail_active) score += 20;
+    if (settings.ga4_clean_segment) score += 20;
+    if (settings.crm_utm_capture) score += 15;
+    if (settings.avblast_retargeting) score += 15;
+    if (utmCoverage >= 90) score += 30;
+    else if (utmCoverage >= 70) score += 15;
+    return score;
+  }
+  const integrityScore = calcIntegrity();
+  const integrityColor = integrityScore >= 80 ? 'var(--green)' : integrityScore >= 50 ? 'var(--amber)' : 'var(--red)';
+
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const dayOfWeek = today.getDay();
+
+  const SLOTS = ['08:00', '12:00', '16:00', '18:00'];
+  const slotLabels = ['8:00 AM', '12:00 PM', '4:00 PM', '6:00 PM'];
+
+  function getBriefForSlot(slot) {
+    return briefLog.find(b => b.scheduled_date && b.scheduled_date.startsWith(todayStr) && b.scheduled_time === slot);
+  }
+
+  const mixCounts = { 'Pilot-Direct': 0, 'Listing': 0, 'Broker-Facing': 0, 'Event/Campaign': 0 };
+  briefLog.forEach(b => { if (b.content_type && mixCounts[b.content_type] !== undefined) mixCounts[b.content_type]++; });
+  const totalBriefs = Object.values(mixCounts).reduce((a, b) => a + b, 0) || 1;
+
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - today.getDay());
+  const thisWeekWld = wldEntries.filter(e => new Date(e.createdAt || e.created_at) >= weekStart);
+
+  const nextEvent = eventsList.find(e => e.status === 'active' && new Date(e.date) > today);
+  function getCountdown(dateStr) {
+    const diff = new Date(dateStr) - new Date();
+    if (diff <= 0) return { days: 0, hours: 0, minutes: 0 };
+    return {
+      days: Math.floor(diff / 86400000),
+      hours: Math.floor((diff % 86400000) / 3600000),
+      minutes: Math.floor((diff % 3600000) / 60000)
+    };
+  }
+
+  function getCadenceWeek() {
+    const start = new Date(today);
+    start.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const ds = d.toISOString().slice(0, 10);
+      const slots = SLOTS.map(slot => {
+        const brief = briefLog.find(b => b.scheduled_date && b.scheduled_date.startsWith(ds) && b.scheduled_time === slot);
+        if (!brief) return 'empty';
+        if (brief.status === 'published') return 'posted';
+        if (brief.status === 'scheduled') return 'scheduled';
+        if (brief.status === 'draft' || brief.status === 'review') return 'draft';
+        if (brief.status === 'paused') return 'blocked';
+        return 'empty';
+      });
+      days.push({ date: d, dateStr: ds, slots, isToday: ds === todayStr });
+    }
+    return days;
+  }
+  const cadenceWeek = getCadenceWeek();
+  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const cadenceColors = { posted: 'var(--green)', scheduled: 'var(--blue)', draft: 'var(--amber)', blocked: 'var(--red)', empty: 'transparent' };
+
+  const platformList = ['linkedin', 'facebook', 'instagram', 'x', 'youtube', 'tiktok'];
+  const platformMeta = {
+    linkedin: { name: 'LinkedIn', color: 'var(--pl-linkedin)', icon: 'in', windsor: true },
+    facebook: { name: 'Facebook', color: 'var(--pl-facebook)', icon: 'fb', windsor: true },
+    instagram: { name: 'Instagram', color: 'var(--pl-instagram)', icon: 'ig', windsor: true },
+    x: { name: 'X / Twitter', color: 'var(--pl-x)', icon: 'X', windsor: false },
+    youtube: { name: 'YouTube', color: 'var(--pl-youtube)', icon: 'yt', windsor: false },
+    tiktok: { name: 'TikTok', color: 'var(--pl-tiktok)', icon: 'tt', windsor: false }
+  };
+  const platStatus = settings.channel_platform_status || {};
+
+  function getPlatformData(pid) {
+    const md = manualData[pid] || {};
+    if (platformMeta[pid].windsor) {
+      return { followers: md.followers || '—', engagement: md.engagement || '—', growth: md.growth || '—', clicks: md.clicks || '—', source: 'WINDSOR' };
+    }
+    return { followers: md.followers || '—', engagement: md.engagement || '—', growth: md.growth || '—', clicks: md.clicks || '—', source: 'MANUAL' };
+  }
+
+  function saveManualEntry() {
+    if (!manualModal) return;
+    const updated = { ...manualData };
+    updated[manualModal] = {
+      followers: manualForm.followers || '—',
+      engagement: manualForm.engagement || '—',
+      clicks: manualForm.clicks || '—',
+      growth: '—',
+      updated_at: new Date().toISOString()
+    };
+    Store.set('manual_platform_data', updated);
+    logEvent('manual_platform_entry', { platform: manualModal });
+    Store.logActivity('manual_entry', platformMeta[manualModal].name + ' data updated');
+    setManualModal(null);
+    setManualForm({ followers: '', engagement: '', clicks: '' });
+    nav.showToast('Platform data saved.', 'success');
+  }
+
+  function addWld() {
+    if (!wldText.trim()) return;
+    Store.push('wld_entries', { type: wldType, text: wldText.trim().slice(0, 140), created_at: new Date().toISOString() });
+    logEvent('wld_entry_added', { type: wldType });
+    Store.logActivity('wld_added', wldType + ': ' + wldText.trim().slice(0, 40));
+    setWldText('');
+  }
+
+  function addAction() {
+    if (!aqForm.text.trim()) return;
+    Store.push('action_queue', { text: aqForm.text.trim(), category: aqForm.category, assignee: aqForm.assignee, status: 'not_started', created_at: new Date().toISOString() });
+    logEvent('action_added', { category: aqForm.category });
+    setAqForm({ text: '', category: 'FIX', assignee: 'casey' });
+    setShowAqForm(false);
+    nav.showToast('Action added.', 'success');
+  }
+
+  function cycleActionStatus(id) {
+    const item = actionQueue.find(a => a.id === id);
+    if (!item) return;
+    const order = ['not_started', 'in_progress', 'done'];
+    const idx = order.indexOf(item.status);
+    const next = order[(idx + 1) % order.length];
+    Store.update('action_queue', id, { status: next });
+    logEvent('action_status_cycled', { action_id: id, to: next });
+  }
+
+  function perfTableData() {
+    const rows = platformList.map(pid => {
+      const posts = briefLog.filter(b => b.platform === pid && b.status === 'published').length;
+      const pd = getPlatformData(pid);
+      return { platform: pid, name: platformMeta[pid].name, posts, clicks: pd.clicks, sessions: 'PENDING', estQi: 'PENDING' };
+    });
+    rows.sort((a, b) => {
+      let va = a[sortCol], vb = b[sortCol];
+      if (typeof va === 'string') va = va.toLowerCase();
+      if (typeof vb === 'string') vb = vb.toLowerCase();
+      if (va < vb) return sortAsc ? -1 : 1;
+      if (va > vb) return sortAsc ? 1 : -1;
+      return 0;
+    });
+    return rows;
+  }
+
+  const cardStyle = { background: 'var(--navy-light)', border: '1px solid rgba(71,130,211,0.1)', borderRadius: 6, padding: 14 };
+  const sectionTitle = { fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13, color: 'var(--white)', marginBottom: 10 };
+  const labelStyle = { fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)' };
+  const inputStyle = { background: 'rgba(71,130,211,0.08)', border: '1px solid rgba(71,130,211,0.15)', borderRadius: 4, padding: '5px 8px', fontSize: 12, color: 'var(--muted-light)', outline: 'none', width: '100%' };
+
+  function KPICard({ value, label, delta, confidence, accentColor }) {
+    const conf = confidence || 'PENDING';
+    const confColor = conf === 'CONFIRMED' ? 'var(--green)' : conf === 'ESTIMATE' ? 'var(--amber)' : 'var(--muted)';
+    return (
+      <div style={{ ...cardStyle, borderTop: '2px solid ' + (accentColor || 'var(--blue)'), position: 'relative', minWidth: 0 }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 26, color: 'var(--white)', lineHeight: 1.1 }}>{value}</div>
+        <div style={{ ...labelStyle, marginTop: 4 }}>{label}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+          {delta !== undefined && delta !== null && (
+            <span style={{ fontSize: 11, fontWeight: 600, color: delta >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              {delta >= 0 ? '▲' : '▼'} {Math.abs(delta)}%
+            </span>
+          )}
+          <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: confColor + '22', color: confColor, letterSpacing: '0.04em' }}>{conf}</span>
+        </div>
+      </div>
+    );
+  }
+
+  function IntegrityDial() {
+    const r = 54;
+    const circ = 2 * Math.PI * r;
+    const pct = integrityScore / 100;
+    const offset = circ * (1 - pct);
+    const signals = [
+      { label: 'CallRail', pts: 20, active: !!settings.callrail_active },
+      { label: 'GA4 Clean Segment', pts: 20, active: !!settings.ga4_clean_segment },
+      { label: 'CRM UTM Capture', pts: 15, active: !!settings.crm_utm_capture },
+      { label: 'AvBlast Retargeting', pts: 15, active: !!settings.avblast_retargeting },
+      { label: 'UTM Coverage', pts: utmCoverage >= 90 ? 30 : utmCoverage >= 70 ? 15 : 0, active: utmCoverage >= 70 }
+    ];
+    return (
+      <div style={cardStyle}>
+        <div style={sectionTitle}>Measurement Integrity</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <svg width="130" height="130" viewBox="0 0 130 130" style={{ flexShrink: 0 }}>
+            <circle cx="65" cy="65" r={r} fill="none" stroke="rgba(71,130,211,0.1)" strokeWidth="10" />
+            <circle cx="65" cy="65" r={r} fill="none" stroke={integrityColor} strokeWidth="10"
+              strokeDasharray={circ} strokeDashoffset={offset}
+              strokeLinecap="round" transform="rotate(-90 65 65)"
+              style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
+            <text x="65" y="60" textAnchor="middle" fill="var(--white)" fontFamily="var(--font-display)" fontWeight="700" fontSize="28">{integrityScore}</text>
+            <text x="65" y="78" textAnchor="middle" fill="var(--muted)" fontSize="9">/ 100</text>
+          </svg>
+          <div style={{ flex: 1 }}>
+            {signals.map((s, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.active ? 'var(--green)' : 'var(--red)', flexShrink: 0 }} />
+                <span style={{ fontSize: 10, color: 'var(--muted-light)', flex: 1 }}>{s.label}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: s.active ? 'var(--green)' : 'var(--muted)' }}>{s.pts}pts</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function PlatCard({ pid }) {
+    const meta = platformMeta[pid];
+    const status = platStatus[pid] || 'paused';
+    const isLive = status === 'active';
+    const isDisconnected = pid === 'youtube' || pid === 'tiktok';
+    const pd = getPlatformData(pid);
+
+    return (
+      <div style={{
+        ...cardStyle,
+        borderTop: '2px solid ' + meta.color,
+        opacity: isDisconnected ? 0.5 : 1,
+        borderStyle: isDisconnected ? 'dashed' : 'solid',
+        position: 'relative'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 14 }}>{meta.icon}</span>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 12, color: 'var(--white)' }}>{meta.name}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, fontWeight: 700, background: isLive ? 'rgba(151,203,0,0.15)' : 'rgba(138,146,168,0.15)', color: isLive ? 'var(--green)' : 'var(--muted)', textTransform: 'uppercase' }}>
+              {isLive ? 'LIVE' : 'PAUSED'}
+            </span>
+            {!meta.windsor && (
+              <button onClick={() => { setManualModal(pid); setManualForm({ followers: '', engagement: '', clicks: '' }); }}
+                style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 12, cursor: 'pointer', padding: 0 }}
+                title="Manual Entry">{'✎'}</button>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          <div><div style={labelStyle}>Followers</div><div style={{ fontSize: 14, fontWeight: 700, color: 'var(--white)' }}>{pd.followers}</div></div>
+          <div><div style={labelStyle}>Engagement</div><div style={{ fontSize: 14, fontWeight: 700, color: 'var(--white)' }}>{pd.engagement}</div></div>
+          <div><div style={labelStyle}>Growth</div><div style={{ fontSize: 14, fontWeight: 700, color: 'var(--white)' }}>{pd.growth}</div></div>
+          <div><div style={labelStyle}>Clicks</div><div style={{ fontSize: 14, fontWeight: 700, color: 'var(--white)' }}>{pd.clicks}</div></div>
+        </div>
+        <div style={{ marginTop: 6, fontSize: 8, color: 'var(--muted)', textAlign: 'right' }}>{pd.source}</div>
+      </div>
+    );
+  }
+
+  function CompPanel() {
+    const comp = competitors.find(c => c.id === selectedComp);
+    if (!comp) return <div style={cardStyle}><div style={sectionTitle}>Competitive Authority</div><div style={{ fontSize: 10, color: 'var(--muted)' }}>Loading competitor data...</div></div>;
+    const gaData = { linkedin: { posts_week: briefLog.filter(b => b.platform === 'linkedin' && b.status === 'published').length }, facebook: { posts_week: briefLog.filter(b => b.platform === 'facebook' && b.status === 'published').length }, instagram: { posts_week: briefLog.filter(b => b.platform === 'instagram' && b.status === 'published').length }, x: { posts_week: briefLog.filter(b => b.platform === 'x' && b.status === 'published').length }, youtube: { posts_week: 0 }, tiktok: { posts_week: 0 } };
+    const plats = ['linkedin', 'facebook', 'instagram', 'x', 'youtube', 'tiktok'];
+
+    return (
+      <div style={cardStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={sectionTitle}>Competitive Authority</div>
+          <select value={selectedComp} onChange={e => setSelectedComp(e.target.value)}
+            style={{ background: 'rgba(71,130,211,0.08)', border: '1px solid rgba(71,130,211,0.15)', borderRadius: 4, padding: '3px 6px', fontSize: 10, color: 'var(--muted-light)', outline: 'none' }}>
+            {competitors.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        {plats.map(p => {
+          const gaVal = gaData[p]?.posts_week || 0;
+          const compVal = comp.platforms?.[p]?.posts_week || 0;
+          return (
+            <div key={p} style={{ marginBottom: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--muted)', marginBottom: 2 }}>
+                <span>{platformMeta[p].name}</span>
+                <span>{gaVal} vs {compVal}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 2, height: 8 }}>
+                <div style={{ flex: gaVal, background: 'var(--green)', borderRadius: '3px 0 0 3px', minWidth: gaVal > 0 ? 4 : 0, transition: 'flex 0.3s' }} />
+                <div style={{ flex: compVal, background: 'var(--red)', borderRadius: '0 3px 3px 0', minWidth: compVal > 0 ? 4 : 0, transition: 'flex 0.3s' }} />
+                {gaVal === 0 && compVal === 0 && <div style={{ flex: 1, background: 'rgba(71,130,211,0.08)', borderRadius: 3 }} />}
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 9, color: 'var(--muted)' }}>
+          <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--green)', marginRight: 4, verticalAlign: 'middle' }} />GlobalAir.com</span>
+          <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--red)', marginRight: 4, verticalAlign: 'middle' }} />{comp.name}</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: 20, overflowY: 'auto', height: '100%' }}>
+      {alerts.length > 0 && (
+        <div style={{ background: 'rgba(232,80,58,0.08)', border: '1px solid rgba(232,80,58,0.2)', borderRadius: 6, padding: '8px 14px', marginBottom: 14 }}>
+          {alerts.map((a, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#ff9080', marginBottom: i < alerts.length - 1 ? 4 : 0 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--red)', flexShrink: 0, animation: 'pulse 2s infinite' }} />
+              {a}
+            </div>
+          ))}
+          <style>{`@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }`}</style>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, color: 'var(--white)' }}>Command View</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Daily operations dashboard — {todayStr}</div>
+        </div>
+        <div style={{ display: 'flex', gap: 2, background: 'rgba(71,130,211,0.08)', borderRadius: 4, padding: 2 }}>
+          {['7d', '30d', '90d'].map(p => (
+            <button key={p} onClick={() => changePeriod(p)}
+              style={{
+                background: period === p ? 'var(--blue)' : 'transparent',
+                color: period === p ? 'var(--white)' : 'var(--muted)',
+                border: 'none', borderRadius: 3, padding: '4px 12px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase'
+              }}>{p}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10, marginBottom: 12 }}>
+        <KPICard value="—" label="Total Followers" delta={null} confidence="PENDING" accentColor="var(--blue)" />
+        <KPICard value="—" label="Engagement Rate" delta={null} confidence="PENDING" accentColor="var(--green)" />
+        <KPICard value="—" label="Total Reach" delta={null} confidence="PENDING" accentColor="var(--blue)" />
+        <KPICard value={briefLog.filter(b => b.status === 'published').length || '0'} label="Posts Published" delta={null} confidence="CONFIRMED" accentColor="var(--green)" />
+        <KPICard value="—" label="Total Clicks" delta={null} confidence="PENDING" accentColor="var(--blue)" />
+        <KPICard value="—" label="QI from Social" delta={null} confidence="PENDING" accentColor="var(--amber)" />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10, marginBottom: 16 }}>
+        <KPICard value="—" label="QI (Qualified Inquiries)" delta={null} confidence="PENDING" accentColor="var(--amber)" />
+        <KPICard value="—" label="Email Captures" delta={null} confidence="PENDING" accentColor="var(--blue)" />
+        <KPICard value="—" label="High-Intent Actions" delta={null} confidence="PENDING" accentColor="var(--blue)" />
+        <KPICard value="—" label="Social Sessions" delta={null} confidence="PENDING" accentColor="var(--blue)" />
+        <KPICard value="—" label="CPQI (Paid)" delta={null} confidence="PENDING" accentColor="var(--red)" />
+        <KPICard value={integrityScore + '%'} label="Tracking Health" delta={null} confidence={integrityScore >= 80 ? 'CONFIRMED' : 'ESTIMATE'} accentColor={integrityColor} />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 14 }}>
+        {platformList.map(pid => <PlatCard key={pid} pid={pid} />)}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14, marginBottom: 14 }}>
+        <div style={cardStyle}>
+          <div style={sectionTitle}>Cadence Health Grid</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '40px repeat(7, 1fr)', gap: 3 }}>
+            <div />
+            {dayLabels.map((d, i) => (
+              <div key={d} style={{ textAlign: 'center', fontSize: 9, fontWeight: 700, color: cadenceWeek[i]?.isToday ? 'var(--green)' : 'var(--muted)', padding: '2px 0' }}>{d}</div>
+            ))}
+            {SLOTS.map((slot, si) => (
+              <Fragment key={slot}>
+                <div style={{ fontSize: 9, color: 'var(--muted)', display: 'flex', alignItems: 'center' }}>{slotLabels[si]}</div>
+                {cadenceWeek.map((day, di) => (
+                  <div key={di}
+                    onClick={() => { if (day.slots[si] === 'empty') nav.showToast('Navigate to Produce to fill this slot.', 'info'); }}
+                    style={{
+                      height: 22, borderRadius: 3, cursor: day.slots[si] === 'empty' ? 'pointer' : 'default',
+                      background: cadenceColors[day.slots[si]] || 'transparent',
+                      border: day.isToday ? '1px solid var(--green)' : '1px solid rgba(71,130,211,0.06)',
+                      opacity: day.slots[si] === 'empty' ? 0.3 : 1,
+                      transition: 'opacity 150ms'
+                    }}
+                    title={day.dateStr + ' ' + slot + ' —' + day.slots[si]} />
+                ))}
+              </Fragment>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 9, color: 'var(--muted)' }}>
+            {[['Posted', 'var(--green)'], ['Scheduled', 'var(--blue)'], ['Draft', 'var(--amber)'], ['Blocked', 'var(--red)'], ['Empty', 'transparent']].map(([l, c]) => (
+              <span key={l} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: c, border: c === 'transparent' ? '1px solid rgba(71,130,211,0.2)' : 'none' }} />{l}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <IntegrityDial />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 14 }}>
+        <div style={cardStyle}>
+          <div style={sectionTitle}>Event Countdown</div>
+          {nextEvent ? (() => {
+            const cd = getCountdown(nextEvent.date);
+            const pct = nextEvent.post_target > 0 ? Math.min(100, (nextEvent.posts_published / nextEvent.post_target) * 100) : 0;
+            return (
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--white)', fontWeight: 600, marginBottom: 2 }}>{nextEvent.name}</div>
+                {nextEvent.badge_text && (
+                  <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: 'rgba(151,203,0,0.15)', color: 'var(--green)', marginBottom: 8, display: 'inline-block' }}>{nextEvent.badge_text}</span>
+                )}
+                <div style={{ display: 'flex', gap: 12, margin: '10px 0' }}>
+                  {[['days', cd.days], ['hrs', cd.hours], ['min', cd.minutes]].map(([l, v]) => (
+                    <div key={l} style={{ textAlign: 'center' }}>
+                      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 22, color: 'var(--white)' }}>{v}</div>
+                      <div style={{ fontSize: 8, color: 'var(--muted)', textTransform: 'uppercase' }}>{l}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--muted)', marginBottom: 3 }}>
+                    <span>Posts: {nextEvent.posts_published}/{nextEvent.post_target}</span>
+                    <span>{Math.round(pct)}%</span>
+                  </div>
+                  <div style={{ height: 6, background: 'rgba(71,130,211,0.1)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: pct + '%', background: 'var(--green)', borderRadius: 3, transition: 'width 0.3s' }} />
+                  </div>
+                </div>
+              </div>
+            );
+          })() : (
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>No upcoming events.</div>
+          )}
+        </div>
+
+        <div style={cardStyle}>
+          <div style={sectionTitle}>Today's Posting Slots</div>
+          {SLOTS.map((slot, i) => {
+            const brief = getBriefForSlot(slot);
+            return (
+              <div key={slot} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: i < SLOTS.length - 1 ? '1px solid rgba(71,130,211,0.06)' : 'none' }}>
+                <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 700, minWidth: 56 }}>{slotLabels[i]}</span>
+                {brief ? (
+                  <span style={{ fontSize: 11, color: 'var(--white)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{brief.title || brief.headline || 'Brief'}</span>
+                ) : (
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: 'rgba(232,80,58,0.15)', color: 'var(--red)' }}>EMPTY</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={cardStyle}>
+          <div style={sectionTitle}>Content Mix</div>
+          {CONTENT_MIX.map((m, i) => {
+            const count = mixCounts[m.type] || 0;
+            const pct = totalBriefs > 0 ? (count / totalBriefs) * 100 : 0;
+            const targetMid = parseInt(m.target) || 10;
+            return (
+              <div key={i} style={{ marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--muted)', marginBottom: 2 }}>
+                  <span>{m.type} ({m.target})</span>
+                  <span>{Math.round(pct)}% ({count})</span>
+                </div>
+                <div style={{ height: 6, background: 'rgba(71,130,211,0.1)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: Math.min(100, pct) + '%', background: Math.abs(pct - targetMid) < 15 ? 'var(--green)' : 'var(--amber)', borderRadius: 3, transition: 'width 0.3s' }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 14 }}>
+        <div style={cardStyle}>
+          <div style={sectionTitle}>WIN / LOSS / DECISION</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10, minHeight: 24 }}>
+            {thisWeekWld.length === 0 && <span style={{ fontSize: 10, color: 'var(--muted)' }}>No entries this week.</span>}
+            {thisWeekWld.map(e => {
+              const pillColor = e.type === 'WIN' ? 'var(--green)' : e.type === 'LOSS' ? 'var(--red)' : 'var(--blue)';
+              return (
+                <span key={e.id} title={e.text} style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 100, background: pillColor + '22', color: pillColor, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {e.type}: {e.text}
+                </span>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <select value={wldType} onChange={e => setWldType(e.target.value)}
+              style={{ background: 'rgba(71,130,211,0.08)', border: '1px solid rgba(71,130,211,0.15)', borderRadius: 4, padding: '4px 6px', fontSize: 10, color: 'var(--muted-light)', outline: 'none' }}>
+              <option value="WIN">WIN</option>
+              <option value="LOSS">LOSS</option>
+              <option value="DECISION">DECISION</option>
+            </select>
+            <input value={wldText} onChange={e => { if (e.target.value.length <= 140) setWldText(e.target.value); }}
+              placeholder="What happened? (140 chars)"
+              onKeyDown={e => { if (e.key === 'Enter') addWld(); }}
+              style={{ ...inputStyle, flex: 1 }} />
+            <button onClick={addWld} disabled={!wldText.trim()}
+              style={{ background: wldText.trim() ? 'var(--green)' : 'rgba(71,130,211,0.08)', color: wldText.trim() ? 'var(--navy-deep)' : 'var(--muted)', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 10, fontWeight: 700 }}>Add</button>
+          </div>
+          <div style={{ fontSize: 9, color: 'var(--muted)', textAlign: 'right', marginTop: 2 }}>{wldText.length}/140</div>
+        </div>
+
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={sectionTitle}>Action Queue</div>
+            <button onClick={() => setShowAqForm(!showAqForm)}
+              style={{ background: 'rgba(71,130,211,0.1)', border: 'none', borderRadius: 3, padding: '2px 8px', fontSize: 10, color: 'var(--muted-light)', cursor: 'pointer' }}>+</button>
+          </div>
+          {showAqForm && (
+            <div style={{ marginBottom: 8, padding: 8, background: 'rgba(71,130,211,0.04)', borderRadius: 4 }}>
+              <input value={aqForm.text} onChange={e => setAqForm({ ...aqForm, text: e.target.value })} placeholder="Action item..."
+                style={{ ...inputStyle, marginBottom: 4 }} />
+              <div style={{ display: 'flex', gap: 4 }}>
+                <select value={aqForm.category} onChange={e => setAqForm({ ...aqForm, category: e.target.value })}
+                  style={{ background: 'rgba(71,130,211,0.08)', border: '1px solid rgba(71,130,211,0.15)', borderRadius: 4, padding: '3px 6px', fontSize: 10, color: 'var(--muted-light)', outline: 'none' }}>
+                  <option value="SCALE">SCALE</option>
+                  <option value="FIX">FIX</option>
+                  <option value="EXPERIMENT">EXPERIMENT</option>
+                </select>
+                <select value={aqForm.assignee} onChange={e => setAqForm({ ...aqForm, assignee: e.target.value })}
+                  style={{ background: 'rgba(71,130,211,0.08)', border: '1px solid rgba(71,130,211,0.15)', borderRadius: 4, padding: '3px 6px', fontSize: 10, color: 'var(--muted-light)', outline: 'none' }}>
+                  {Object.keys(TEAM_EMAILS).map(k => <option key={k} value={k}>{k}</option>)}
+                </select>
+                <button onClick={addAction} disabled={!aqForm.text.trim()}
+                  style={{ background: aqForm.text.trim() ? 'var(--green)' : 'rgba(71,130,211,0.08)', color: aqForm.text.trim() ? 'var(--navy-deep)' : 'var(--muted)', border: 'none', borderRadius: 4, padding: '3px 10px', fontSize: 10, fontWeight: 700 }}>Add</button>
+              </div>
+            </div>
+          )}
+          {['SCALE', 'FIX', 'EXPERIMENT'].map(cat => {
+            const items = actionQueue.filter(a => a.category === cat);
+            if (items.length === 0) return null;
+            const catColors = { SCALE: 'var(--green)', FIX: 'var(--red)', EXPERIMENT: 'var(--blue)' };
+            return (
+              <div key={cat} style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 8, fontWeight: 700, color: catColors[cat], textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>{cat}</div>
+                {items.map(a => {
+                  const statusColors = { not_started: 'var(--muted)', in_progress: 'var(--amber)', done: 'var(--green)' };
+                  const statusLabels = { not_started: 'TODO', in_progress: 'WIP', done: 'DONE' };
+                  return (
+                    <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0', borderBottom: '1px solid rgba(71,130,211,0.04)' }}>
+                      <button onClick={() => cycleActionStatus(a.id)}
+                        style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, border: 'none', background: statusColors[a.status] + '22', color: statusColors[a.status], cursor: 'pointer', flexShrink: 0 }}>
+                        {statusLabels[a.status]}
+                      </button>
+                      <span style={{ fontSize: 10, color: a.status === 'done' ? 'var(--muted)' : 'var(--muted-light)', flex: 1, textDecoration: a.status === 'done' ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.text}</span>
+                      {a.assignee && (
+                        <a href={'mailto:' + (TEAM_EMAILS[a.assignee] || '')} title={'Assign: ' + a.assignee}
+                          style={{ fontSize: 8, color: 'var(--blue)', textDecoration: 'none' }}>{a.assignee}</a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {actionQueue.length === 0 && !showAqForm && <div style={{ fontSize: 10, color: 'var(--muted)' }}>No actions queued. Click + to add.</div>}
+        </div>
+
+        <CompPanel />
+      </div>
+
+      <div style={cardStyle}>
+        <div style={sectionTitle}>Platform Performance</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              {[
+                { key: 'platform', label: 'Platform' },
+                { key: 'posts', label: 'Posts' },
+                { key: 'clicks', label: 'TinyURL Clicks' },
+                { key: 'sessions', label: 'GA4 Sessions' },
+                { key: 'estQi', label: 'Est. QI' }
+              ].map(col => (
+                <th key={col.key}
+                  onClick={() => { if (sortCol === col.key) setSortAsc(!sortAsc); else { setSortCol(col.key); setSortAsc(true); } }}
+                  style={{ textAlign: 'left', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: sortCol === col.key ? 'var(--blue)' : 'var(--muted)', padding: '6px 10px', cursor: 'pointer', borderBottom: '1px solid rgba(71,130,211,0.1)' }}>
+                  {col.label} {sortCol === col.key ? (sortAsc ? '▲' : '▼') : ''}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {perfTableData().map(row => (
+              <tr key={row.platform} style={{ borderBottom: '1px solid rgba(71,130,211,0.04)' }}>
+                <td style={{ padding: '6px 10px', fontSize: 12, color: 'var(--white)', fontWeight: 500 }}>
+                  <span style={{ marginRight: 6 }}>{platformMeta[row.platform].icon}</span>{row.name}
+                </td>
+                <td style={{ padding: '6px 10px', fontSize: 12, color: 'var(--muted-light)' }}>{row.posts}</td>
+                <td style={{ padding: '6px 10px', fontSize: 12, color: 'var(--muted-light)' }}>{row.clicks}</td>
+                <td style={{ padding: '6px 10px' }}>
+                  <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'rgba(138,146,168,0.15)', color: 'var(--muted)' }}>PENDING</span>
+                </td>
+                <td style={{ padding: '6px 10px' }}>
+                  <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'rgba(138,146,168,0.15)', color: 'var(--muted)' }}>PENDING</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {manualModal && (
+        <div onClick={e => { if (e.target === e.currentTarget) setManualModal(null); }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'var(--navy-light)', border: '1px solid rgba(71,130,211,0.15)', borderRadius: 8, padding: 24, minWidth: 360 }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 16, color: 'var(--white)', marginBottom: 16 }}>
+              Manual Entry: {platformMeta[manualModal]?.name}
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ ...labelStyle, marginBottom: 4 }}>Followers</div>
+              <input value={manualForm.followers} onChange={e => setManualForm({ ...manualForm, followers: e.target.value })} style={inputStyle} placeholder="e.g., 12,400" />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ ...labelStyle, marginBottom: 4 }}>Engagement %</div>
+              <input value={manualForm.engagement} onChange={e => setManualForm({ ...manualForm, engagement: e.target.value })} style={inputStyle} placeholder="e.g., 3.2%" />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ ...labelStyle, marginBottom: 4 }}>Clicks / Views</div>
+              <input value={manualForm.clicks} onChange={e => setManualForm({ ...manualForm, clicks: e.target.value })} style={inputStyle} placeholder="e.g., 840" />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => setManualModal(null)}
+                style={{ background: 'rgba(71,130,211,0.1)', border: '1px solid rgba(71,130,211,0.2)', borderRadius: 4, padding: '6px 14px', fontSize: 12, color: 'var(--muted-light)' }}>Cancel</button>
+              <button onClick={saveManualEntry}
+                style={{ background: 'var(--green)', border: 'none', borderRadius: 4, padding: '6px 14px', fontSize: 12, fontWeight: 700, color: 'var(--navy-deep)' }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   PLACEHOLDER VIEWS (Pages 2-6)
    ============================================================ */
 function PlaceholderView({ viewId }) {
   const meta = VIEWS.find(v => v.id === viewId);
   const descriptions = {
-    command: 'Dashboard — KPIs, Windsor data, integrity score, cadence grid, alerts. Building next.',
+    command: 'Dashboard — KPIs, Windsor data, integrity score, cadence grid, alerts.',
     plan: 'Monthly content calendar with readiness gates, recurring post locks.',
     produce: 'Kanban pipeline, brief creation, UTM builder, task board.',
     learn: 'Performance analytics — leaderboards, funnel, attribution health.',
@@ -1356,6 +2041,7 @@ function App() {
 
   function renderView() {
     switch (currentView) {
+      case 'command':  return <CommandView />;
       case 'channel':  return <ChannelView />;
       case 'requests': return <RequestsView />;
       case 'settings': return <SettingsView />;
