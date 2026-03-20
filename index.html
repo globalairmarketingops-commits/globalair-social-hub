@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GlobalAir.com Social Hub OS</title>
+<meta name="description" content="GlobalAir.com Social Hub OS — Internal Marketing Operations Dashboard">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; font-src https://fonts.gstatic.com https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23102297'/><text x='16' y='22' text-anchor='middle' font-size='18' fill='%2397cb00'>G</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<style>
+/* ============================================================
+   GlobalAir Social Hub OS — Design Tokens
+   Compliant with DevOps Handoff Standard v1.0
+   ============================================================ */
+:root {
+  /* Brand Colors — DevOps Standard compliant */
+  --navy:        #102297;
+  --navy-deep:   #0B1870;
+  --navy-light:  #1A2FA8;
+  --navy-mid:    #1E34B8;
+  --green:       #97CB00;
+  --blue:        #4782D3;
+  --red:         #E8503A;
+  --amber:       #F59E0B;
+  --off-white:   #F4F5F7;
+  --muted:       #8A92A8;
+  --muted-light: #B2BBC8;
+  --white:       #FFFFFF;
+  --body-text:   #2C2C2A;
+
+  /* Typography */
+  --font-display: 'Montserrat', sans-serif;
+  --font-body:    'DM Sans', sans-serif;
+  --font-serif:   'Instrument Serif', serif;
+
+  /* Layout */
+  --sidebar-w:    220px;
+  --sidebar-collapsed: 56px;
+  --topbar-h:     48px;
+
+  /* Platform Colors */
+  --pl-linkedin:  #0A66C2;
+  --pl-facebook:  #7B68EE;
+  --pl-instagram: #E1306C;
+  --pl-x:         #888888;
+  --pl-tiktok:    #69C9D0;
+  --pl-youtube:   #FF0000;
+
+  /* Status */
+  --st-draft:     #9CA3AF;
+  --st-review:    #F59E0B;
+  --st-approved:  #4782D3;
+  --st-scheduled: #102297;
+  --st-published: #97CB00;
+  --st-paused:    #E8503A;
+
+  /* Lanes */
+  --lane-green:   #97CB00;
+  --lane-yellow:  #F59E0B;
+}
+
+/* Base reset */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body, #root { width: 100%; height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font-body);
+  background: var(--navy-deep);
+  color: var(--muted-light);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(71,130,211,0.2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(71,130,211,0.4); }
+
+/* Utility classes not covered by Tailwind inline */
+.font-display { font-family: var(--font-display); }
+.font-body { font-family: var(--font-body); }
+button { cursor: pointer; font-family: var(--font-body); }
+a { text-decoration: none; color: inherit; }
+input, textarea, select { font-family: var(--font-body); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-type="module">
+const { useState, useEffect, useCallback, useRef, createContext, useContext, useMemo } = React;
+
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
+const TEAM_EMAILS = {
+  casey:  'casey.jones@globalair.com',
+  keaton: 'Keaton.Fenwick@GlobalAir.com',
+  sydney: 'sydney.eldridge@globalair.com',
+  jadda:  'jadda.tyree@globalair.com',
+  abby:   'abigail.sheets@globalair.com',
+  ashley: 'ashley.blevins@globalair.com'
+};
+
+const TEAM_ROSTER = [
+  { key: 'casey',  name: 'Casey Jones',     role: 'Head of Marketing' },
+  { key: 'keaton', name: 'Keaton Fenwick',   role: 'Communications Manager' },
+  { key: 'sydney', name: 'Sydney Eldridge',  role: 'Email Operations' },
+  { key: 'jadda',  name: 'Jadda Tyree',      role: 'Content Writer' },
+  { key: 'abby',   name: 'Abigail Sheets',   role: 'FBO/ARC/Events' },
+  { key: 'ashley', name: 'Ashley Blevins',    role: 'Production Team Manager' }
+];
+
+const VIEWS = [
+  { id: 'command',  label: 'Command',  icon: '⚡', page: 1 },
+  { id: 'plan',     label: 'Plan',     icon: '📅', page: 2 },
+  { id: 'produce',  label: 'Produce',  icon: '🔧', page: 3 },
+  { id: 'learn',    label: 'Learn',    icon: '📊', page: 4 },
+  { id: 'compete',  label: 'Compete',  icon: '🎯', page: 5 },
+  { id: 'library',  label: 'Library',  icon: '📚', page: 6 },
+  { id: 'requests', label: 'Requests', icon: '📋', page: 7 },
+  { id: 'channel',  label: 'Channel',  icon: '📡', page: 8 }
+];
+
+const RECURRING_POSTS = [
+  { name: 'FBO of the Month', rule: '1st of each month', owner: 'abby' },
+  { name: 'Ramp Ramble',      rule: '4th Thursday',      owner: 'abby' },
+  { name: 'BrokerNet Stats',  rule: 'Last business day',  owner: 'keaton' },
+  { name: 'Fuel Price Map',   rule: '1st of each month',  owner: 'keaton' },
+  { name: 'Game Winner',      rule: 'Last day of month',  owner: 'keaton' }
+];
+
+/* Platform rules — Channel View source of truth (CLAUDE.md Section 9 + Page 8 spec) */
+const PLATFORM_RULES = {
+  linkedin: {
+    name: 'LinkedIn', icon: '🔗', color: '#0A66C2', status: 'active',
+    aircraftTypes: 'Jets ONLY',
+    frequency: '3-5 posts/week',
+    audience: 'Corporate flight departments, brokers, industry professionals',
+    tone: 'Institutional — no exclamation marks',
+    algorithmPriority: ['Dwell time', 'Comments', 'Shares'],
+    format: 'Year Make Model | TT | $Price\nPresented by: [Broker]\n2-3 sentence creative pitch\n→ Feature 1\n→ Feature 2\n→ Feature 3\nCTA + UTM link\nOperating cost secondary CTA',
+    charLimit: '3,000 (use 800-1,200)',
+    hashtags: 'None',
+    emojis: 'None',
+    ctaRules: 'Action verb + UTM link. Secondary: operating cost download CTA.',
+    imageSpec: '1 image, exterior preferred, no text overlay. 1200×627px recommended.',
+  },
+  facebook: {
+    name: 'Facebook', icon: '📘', color: '#7B68EE', status: 'active',
+    aircraftTypes: 'Piston, Turboprop, Helicopter ONLY — no jets',
+    frequency: '5-7 posts/week',
+    audience: 'Owner-pilots, enthusiasts, piston/turboprop buyers',
+    tone: 'Conversational, accessible',
+    algorithmPriority: ['Comments', 'Shares', 'Saves'],
+    format: 'Year Make Model | TT | $Price\nPresented by: [Broker]\n2-3 sentence pitch\n✈️ Feature 1\n🛫 Feature 2\n📍 Feature 3\n🔧 Feature 4\n💰 Feature 5\nCTA + UTM link\nTag broker page\nOperating cost secondary CTA',
+    charLimit: '63,206 (use 300-600)',
+    hashtags: '3-5 max',
+    emojis: 'OK — use sparingly per feature line',
+    ctaRules: 'Action verb + UTM link. Tag broker page. Secondary: operating cost CTA.',
+    imageSpec: '2 images max. 1200×630px. No text overlay on primary image.',
+  },
+  instagram: {
+    name: 'Instagram', icon: '📸', color: '#E1306C', status: 'active',
+    aircraftTypes: 'All types — visually exceptional aircraft only',
+    frequency: '4-5 posts/week (carousel only)',
+    audience: 'Aspirational buyers, aviation enthusiasts, younger demographic',
+    tone: 'Aspirational, visual-first',
+    algorithmPriority: ['Saves', 'Carousel swipes', 'Shares'],
+    format: 'Carousel ONLY (3 slides min):\nSlide 1: Exterior hero\nSlide 2: Interior with features panel\nSlide 3: Full navy CTA\n\nCaption: Year Make Model | TT | $Price\nPresented by: [Broker]\nShort aspirational pitch\n3 features\nLink in bio 🔗\n15-25 hashtags (first comment)\nOperating cost CTA — "link in bio"',
+    charLimit: '2,200 (use 200-400 + hashtags in first comment)',
+    hashtags: '15-25 in first comment, NOT in caption',
+    emojis: 'Moderate — 🔗 for link in bio',
+    ctaRules: 'No links in caption — "Link in bio" only. Hashtags in first comment.',
+    imageSpec: '4 images per post (exterior, cockpit, interior, detail). 1080×1080px or 1080×1350px.',
+  },
+  x: {
+    name: 'X / Twitter', icon: '𝕏', color: '#888888', status: 'active',
+    aircraftTypes: 'All listings',
+    frequency: '3-5 posts/week',
+    audience: 'Aviation news followers, quick-scan buyers',
+    tone: 'News-wire — factual, concise',
+    algorithmPriority: ['Retweets', 'Replies', 'Link clicks'],
+    format: 'Year Make Model | TT | $Price\n1 feature | 1 differentiator\nUTM link\n1-3 hashtags\nOperating cost line if character budget allows',
+    charLimit: '280 characters',
+    hashtags: '1-3 max',
+    emojis: 'None',
+    ctaRules: 'Direct UTM link. Under 280 chars total.',
+    imageSpec: '1 image. 1600×900px or 1200×675px.',
+  },
+  tiktok: {
+    name: 'TikTok', icon: '🎵', color: '#69C9D0', status: 'paused',
+    aircraftTypes: 'All — video content only',
+    frequency: 'TBD — paused pending video SOP',
+    audience: 'Young aviation enthusiasts, aspiring pilots',
+    tone: 'Energetic, behind-the-scenes, educational',
+    algorithmPriority: ['Watch time', 'Shares', 'Comments'],
+    format: 'Short-form video (15-60s)\nHook in first 3 seconds\nText overlay with key spec\nCTA in caption',
+    charLimit: '2,200',
+    hashtags: '3-5 relevant aviation/aircraft hashtags',
+    emojis: 'Moderate',
+    ctaRules: 'Link in bio. Caption CTA to profile.',
+    imageSpec: 'Video: 1080×1920px (9:16). 15-60 seconds.',
+  },
+  youtube: {
+    name: 'YouTube', icon: '▶️', color: '#FF0000', status: 'paused',
+    aircraftTypes: 'All — video content only',
+    frequency: 'TBD — paused pending video SOP',
+    audience: 'Aviation buyers researching specific models, enthusiasts',
+    tone: 'Educational, authoritative, detailed',
+    algorithmPriority: ['Watch time', 'Likes', 'Subscribers gained'],
+    format: 'Long-form (5-15min) or Shorts (< 60s)\nModel walkthroughs, buyer guides, event coverage\nChapters for long-form\nEnd screen with subscribe CTA',
+    charLimit: '5,000 (description)',
+    hashtags: '3-5 in description',
+    emojis: 'Minimal — in description only',
+    ctaRules: 'Subscribe CTA. Link to listing in description. End screen.',
+    imageSpec: 'Video: 1920×1080px (16:9). Thumbnail: 1280×720px.',
+  }
+};
+
+const GLOBALAIR_RULES = [
+  { rule: 'Always write "GlobalAir.com" — never "GlobalAir," "Global Air," or "GA"', critical: true },
+  { rule: 'Every post must include "Presented by [Broker/Seller Name]" + tag their social account', critical: true },
+  { rule: 'NEVER reference Ian Lumpp in social listing copy', critical: true },
+  { rule: 'Full UTM links on every post — no exceptions', critical: true },
+  { rule: 'Shorten all UTM links via TinyURL before scheduling in Sendible', critical: false },
+  { rule: 'Secondary CTA: "Download the [Model] operating cost breakdown on GlobalAir.com"', critical: false },
+  { rule: 'Creative hook required: "Just listed," "Dream hangar find," "Price reduction," "Weekend upgrade"', critical: false },
+  { rule: 'All listing copy must use verified data only — never general aircraft knowledge', critical: true },
+  { rule: 'Never use the word "free" in any social copy', critical: false },
+  { rule: 'No exclamation marks in buyer-facing copy', critical: false }
+];
+
+const CONTENT_MIX = [
+  { type: 'Pilot-Direct',  target: '50-60%', description: 'Education, buyer guides, ownership content aimed at pilots/owners' },
+  { type: 'Listing',       target: '25-35%', description: 'Aircraft listing posts with broker presentation' },
+  { type: 'Broker-Facing', target: '~10%',   description: 'BrokerNet highlights, advertiser value content' },
+  { type: 'Event/Campaign',target: '~5%',    description: 'AERO, AirVenture, NBAA, seasonal campaigns' }
+];
+
+/* ============================================================
+   STORE — localStorage Data Layer
+   ============================================================ */
+const STORE_KEY = 'ga_social_hub';
+const STORE_VERSION = '1.0.0';
+
+const DEFAULT_STATE = {
+  version: STORE_VERSION,
+  settings: {
+    nbaa_sdc_booth: null,
+    callrail_active: false,
+    ga4_clean_segment: true,
+    crm_utm_capture: false,
+    avblast_retargeting: false,
+    command_period_selection: '7d',
+    sprint_start_date: '2026-03-23',
+    sprint_duration: 14,
+    sendible_links: { calendar: '', inbox: '', drafts: '', queue: '' },
+    windsor_status: 'connected',
+    channel_platform_status: {
+      linkedin: 'active', facebook: 'active', instagram: 'active',
+      x: 'active', tiktok: 'paused', youtube: 'paused'
+    }
+  },
+  brief_log: [],
+  events_list: [],
+  wld_entries: [],
+  action_queue: [],
+  competitors: [],
+  manual_platform_data: {},
+  requests: [],
+  activity: [],
+  lastModule: 'command',
+  lastUpdated: null
+};
+
+function generateId() {
+  return Date.now().toString(36) + '-' + Math.random().toString(36).substr(2, 9);
+}
+
+const Store = {
+  _data: null,
+
+  init() {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      try {
+        this._data = JSON.parse(raw);
+        this._data = this._merge(this._data, DEFAULT_STATE);
+        this._data.version = STORE_VERSION;
+      } catch {
+        this._data = JSON.parse(JSON.stringify(DEFAULT_STATE));
+      }
+    } else {
+      this._data = JSON.parse(JSON.stringify(DEFAULT_STATE));
+    }
+    this._save();
+    return this._data;
+  },
+
+  _merge(stored, defaults) {
+    const result = { ...stored };
+    for (const key of Object.keys(defaults)) {
+      if (result[key] === undefined) {
+        result[key] = JSON.parse(JSON.stringify(defaults[key]));
+      } else if (typeof defaults[key] === 'object' && defaults[key] !== null && !Array.isArray(defaults[key])) {
+        result[key] = this._merge(result[key], defaults[key]);
+      }
+    }
+    return result;
+  },
+
+  get(path) {
+    if (!this._data) this.init();
+    if (!path) return JSON.parse(JSON.stringify(this._data));
+    return path.split('.').reduce((acc, k) => acc?.[k], this._data);
+  },
+
+  set(path, value) {
+    if (!this._data) this.init();
+    const keys = path.split('.');
+    let target = this._data;
+    for (let i = 0; i < keys.length - 1; i++) {
+      if (target[keys[i]] === undefined) target[keys[i]] = {};
+      target = target[keys[i]];
+    }
+    target[keys[keys.length - 1]] = value;
+    this._data.lastUpdated = new Date().toISOString();
+    this._save();
+  },
+
+  push(path, item) {
+    if (!this._data) this.init();
+    const arr = this.get(path);
+    if (!Array.isArray(arr)) return null;
+    item.id = item.id || generateId();
+    item.createdAt = item.createdAt || new Date().toISOString();
+    item.updatedAt = new Date().toISOString();
+    arr.push(item);
+    this.set(path, arr);
+    return item;
+  },
+
+  update(path, id, updates) {
+    const arr = this.get(path);
+    if (!Array.isArray(arr)) return null;
+    const idx = arr.findIndex(i => i.id === id);
+    if (idx === -1) return null;
+    Object.assign(arr[idx], updates, { updatedAt: new Date().toISOString() });
+    this.set(path, arr);
+    return arr[idx];
+  },
+
+  remove(path, id) {
+    const arr = this.get(path);
+    if (!Array.isArray(arr)) return false;
+    const idx = arr.findIndex(i => i.id === id);
+    if (idx === -1) return false;
+    arr.splice(idx, 1);
+    this.set(path, arr);
+    return true;
+  },
+
+  _save() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(this._data));
+    } catch (e) {
+      console.error('Store: localStorage write failed', e);
+    }
+  },
+
+  getSprintInfo() {
+    const startStr = this.get('settings.sprint_start_date');
+    if (!startStr) return { number: '—', day: '—', label: 'No sprint configured' };
+    const start = new Date(startStr);
+    const now = new Date();
+    const diff = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+    if (diff < 0) return { number: 1, day: '—', label: `Sprint starts ${startStr}` };
+    const duration = this.get('settings.sprint_duration') || 14;
+    const sprintNum = Math.floor(diff / duration) + 1;
+    const dayInSprint = (diff % duration) + 1;
+    return { number: sprintNum, day: dayInSprint, label: `S${sprintNum} · Day ${dayInSprint}/${duration}` };
+  },
+
+  logActivity(action, detail) {
+    if (!this._data) this.init();
+    this._data.activity.unshift({ id: generateId(), action, detail: detail || '', timestamp: new Date().toISOString() });
+    if (this._data.activity.length > 50) this._data.activity = this._data.activity.slice(0, 50);
+    this._save();
+  }
+};
+
+// Initialize store
+Store.init();
+
+/* ============================================================
+   ANALYTICS — console.log structured events (Phase 1)
+   ============================================================ */
+function logEvent(name, params = {}) {
+  console.log(`[HubEvent] ${name}`, { ...params, timestamp: new Date().toISOString() });
+}
+
+/* ============================================================
+   NAVIGATION CONTEXT
+   ============================================================ */
+const NavContext = createContext();
+
+function useNav() { return useContext(NavContext); }
+
+/* ============================================================
+   TOAST SYSTEM
+   ============================================================ */
+function Toast({ message, type = 'info', onClose }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 3000);
+    return () => clearTimeout(t);
+  }, []);
+  const bg = type === 'success' ? 'rgba(151,203,0,0.15)' : type === 'error' ? 'rgba(232,80,58,0.15)' : 'rgba(71,130,211,0.15)';
+  const border = type === 'success' ? 'var(--green)' : type === 'error' ? 'var(--red)' : 'var(--blue)';
+  return (
+    <div style={{ position:'fixed',bottom:20,right:20,background:bg,border:`1px solid ${border}`,borderRadius:6,padding:'10px 16px',fontSize:12,color:'var(--muted-light)',zIndex:9999,maxWidth:360,fontFamily:'var(--font-body)' }}>
+      {message}
+    </div>
+  );
+}
+
+/* ============================================================
+   MODAL SYSTEM
+   ============================================================ */
+function Modal({ title, children, onClose, onConfirm, confirmText = 'Confirm', danger = false }) {
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+  return (
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000 }}
+      role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div style={{ background:'var(--navy-light)',border:'1px solid rgba(71,130,211,0.15)',borderRadius:8,padding:24,minWidth:400,maxWidth:540,maxHeight:'80vh',overflow:'auto' }}>
+        <div id="modal-title" style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:16,color:'var(--white)',marginBottom:16 }}>{title}</div>
+        <div style={{ marginBottom:20 }}>{children}</div>
+        <div style={{ display:'flex',justifyContent:'flex-end',gap:8 }}>
+          <button onClick={onClose} style={{ background:'rgba(71,130,211,0.1)',border:'1px solid rgba(71,130,211,0.2)',borderRadius:4,padding:'6px 14px',fontSize:12,color:'var(--muted-light)' }}>Cancel</button>
+          {onConfirm && <button onClick={onConfirm} style={{ background:danger?'var(--red)':'var(--green)',border:'none',borderRadius:4,padding:'6px 14px',fontSize:12,fontWeight:700,color:danger?'var(--white)':'var(--navy-deep)' }}>{confirmText}</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   SIDEBAR
+   ============================================================ */
+function Sidebar({ currentView, onNavigate }) {
+  return (
+    <nav style={{ width:'var(--sidebar-w)',height:'100vh',background:'var(--navy-deep)',borderRight:'1px solid rgba(71,130,211,0.08)',display:'flex',flexDirection:'column',flexShrink:0 }}>
+      {/* Logo */}
+      <div style={{ padding:'16px 20px',borderBottom:'1px solid rgba(71,130,211,0.06)' }}>
+        <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:14,color:'var(--white)',letterSpacing:'-0.02em' }}>GlobalAir.com</div>
+        <div style={{ fontSize:9,color:'var(--muted)',letterSpacing:'0.1em',textTransform:'uppercase',marginTop:2 }}>Social Hub OS</div>
+      </div>
+
+      {/* Nav items */}
+      <div style={{ flex:1,padding:'12px 8px',overflowY:'auto' }}>
+        {VIEWS.map(v => (
+          <button key={v.id} onClick={() => onNavigate(v.id)}
+            style={{
+              display:'flex',alignItems:'center',gap:10,width:'100%',padding:'9px 12px',
+              borderRadius:6,border:'none',fontSize:12,textAlign:'left',marginBottom:2,
+              background: currentView === v.id ? 'rgba(71,130,211,0.12)' : 'transparent',
+              color: currentView === v.id ? 'var(--white)' : 'var(--muted)',
+              fontWeight: currentView === v.id ? 600 : 400,
+              transition: 'all 180ms ease'
+            }}>
+            <span style={{ fontSize:15,width:20,textAlign:'center' }}>{v.icon}</span>
+            <span>{v.label}</span>
+            <span style={{ marginLeft:'auto',fontSize:9,opacity:0.4 }}>{v.page}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding:'12px 20px',borderTop:'1px solid rgba(71,130,211,0.06)',fontSize:9,color:'var(--muted)' }}>
+        <div>v1.0 — March 2026</div>
+        <div style={{ marginTop:2,opacity:0.6 }}>Aviation's Homepage Since 1995</div>
+      </div>
+    </nav>
+  );
+}
+
+/* ============================================================
+   TOPBAR
+   ============================================================ */
+function Topbar({ currentView, sprintInfo }) {
+  const viewMeta = VIEWS.find(v => v.id === currentView) || VIEWS[0];
+  return (
+    <header style={{
+      height:'var(--topbar-h)',display:'flex',alignItems:'center',justifyContent:'space-between',
+      padding:'0 20px',background:'var(--navy-deep)',borderBottom:'1px solid rgba(71,130,211,0.06)',flexShrink:0
+    }}>
+      <div style={{ display:'flex',alignItems:'center',gap:12 }}>
+        <span style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:14,color:'var(--white)' }}>
+          {viewMeta.icon} {viewMeta.label}
+        </span>
+        <span style={{ fontSize:10,color:'var(--muted)',padding:'2px 8px',background:'rgba(71,130,211,0.08)',borderRadius:100 }}>
+          Page {viewMeta.page} of 8
+        </span>
+      </div>
+      <div style={{ display:'flex',alignItems:'center',gap:16 }}>
+        <span style={{ fontSize:10,color:'var(--muted)' }}>{sprintInfo.label}</span>
+        <span style={{ width:6,height:6,borderRadius:'50%',background:'var(--green)' }} title="Windsor: Connected" />
+      </div>
+    </header>
+  );
+}
+
+/* ============================================================
+   PAGE 8: CHANNEL VIEW
+   Platform rules reference — replaces SOP_Social_Posting_Scripts.docx
+   ============================================================ */
+function ChannelView() {
+  const [quickRef, setQuickRef] = useState(false);
+  const [expandedPlatform, setExpandedPlatform] = useState(null);
+  const nav = useNav();
+
+  const platforms = Object.entries(PLATFORM_RULES);
+
+  const quickRefSummary = {
+    linkedin: 'Jets only — No hashtags — No emojis — Institutional tone',
+    facebook: 'No jets — Emojis OK — 3-5 hashtags — Conversational',
+    instagram: 'Carousel only (3 slides) — No links in caption — 15-25 hashtags in first comment',
+    x: 'Under 280 chars — 1-3 hashtags — No emojis — News-wire tone',
+    tiktok: 'PAUSED — Pending video SOP',
+    youtube: 'PAUSED — Pending video SOP'
+  };
+
+  useEffect(() => {
+    logEvent('channel_view_loaded', { platforms_displayed: 6 });
+  }, []);
+
+  function StatusBadge({ status }) {
+    const colors = { active: 'var(--green)', paused: 'var(--muted)', planned: 'var(--amber)' };
+    return (
+      <span style={{
+        fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',
+        padding:'2px 8px',borderRadius:100,
+        background: `${colors[status]}20`,
+        color: colors[status]
+      }}>{status}</span>
+    );
+  }
+
+  function RuleSection({ label, value, critical = false }) {
+    return (
+      <div style={{ marginBottom:10 }}>
+        <div style={{ fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.1em',color:'var(--muted)',marginBottom:3 }}>{label}</div>
+        <div style={{
+          fontSize:12,color: critical ? 'var(--green)' : 'var(--muted-light)',
+          fontWeight: critical ? 700 : 400,
+          whiteSpace:'pre-line',lineHeight:1.6
+        }}>{value}</div>
+      </div>
+    );
+  }
+
+  function PlatformCard({ id, platform }) {
+    const isPaused = platform.status === 'paused';
+    return (
+      <div style={{
+        background:'var(--navy-light)',border:'1px solid rgba(71,130,211,0.1)',
+        borderRadius:8,padding:18,opacity: isPaused ? 0.7 : 1,
+        transition:'all 180ms ease'
+      }}>
+        {/* Header */}
+        <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14 }}>
+          <div style={{ display:'flex',alignItems:'center',gap:10 }}>
+            <div style={{ width:28,height:28,borderRadius:6,background:platform.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14 }}>
+              {platform.icon}
+            </div>
+            <span style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:16,color:'var(--white)' }}>{platform.name}</span>
+          </div>
+          <StatusBadge status={platform.status} />
+        </div>
+
+        {/* Rules grid */}
+        <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 20px' }}>
+          <RuleSection label="Aircraft Types" value={platform.aircraftTypes} critical />
+          <RuleSection label="Posting Frequency" value={platform.frequency} />
+          <RuleSection label="Tone" value={platform.tone} critical={id === 'linkedin'} />
+          <RuleSection label="Audience" value={platform.audience} />
+          <RuleSection label="Algorithm Priority" value={platform.algorithmPriority.join(', ')} />
+          <RuleSection label="Character Limit" value={platform.charLimit} />
+          <RuleSection label="Hashtags" value={platform.hashtags} critical={platform.hashtags === 'None'} />
+          <RuleSection label="Emojis" value={platform.emojis} critical={platform.emojis === 'None'} />
+          <RuleSection label="CTA Rules" value={platform.ctaRules} />
+          <RuleSection label="Image/Video Spec" value={platform.imageSpec} />
+        </div>
+
+        {/* Format section — full width */}
+        <div style={{ marginTop:4,paddingTop:12,borderTop:'1px solid rgba(71,130,211,0.08)' }}>
+          <RuleSection label="Content Format" value={platform.format} />
+        </div>
+
+        {/* Flag Issue button */}
+        <div style={{ marginTop:8,display:'flex',justifyContent:'flex-end' }}>
+          <button onClick={() => {
+            logEvent('channel_flag_issue', { platform: id });
+            nav.navigate('requests', { prefill_type: 'Strategy/Other', prefill_title: `Channel rule issue: ${platform.name}` });
+          }}
+          style={{ fontSize:10,color:'var(--muted)',background:'none',border:'1px solid rgba(71,130,211,0.1)',borderRadius:4,padding:'4px 10px',cursor:'pointer' }}>
+            Flag an Issue
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding:20,overflowY:'auto',height:'100%' }}>
+      {/* View header */}
+      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20 }}>
+        <div>
+          <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:18,color:'var(--white)' }}>Platform Rules Reference</div>
+          <div style={{ fontSize:11,color:'var(--muted)',marginTop:2 }}>Authoritative source — replaces SOP_Social_Posting_Scripts.docx</div>
+        </div>
+        <button onClick={() => setQuickRef(!quickRef)}
+          style={{
+            background: quickRef ? 'var(--green)' : 'rgba(71,130,211,0.1)',
+            color: quickRef ? 'var(--navy-deep)' : 'var(--muted-light)',
+            border:'none',borderRadius:4,padding:'6px 14px',fontSize:11,fontWeight:700
+          }}>
+          {quickRef ? 'Full View' : 'Quick Reference'}
+        </button>
+      </div>
+
+      {/* Quick Reference Mode */}
+      {quickRef ? (
+        <div style={{ background:'var(--navy-light)',borderRadius:8,border:'1px solid rgba(71,130,211,0.1)',overflow:'hidden' }}>
+          {platforms.map(([id, p]) => (
+            <div key={id} style={{
+              display:'flex',alignItems:'center',gap:10,padding:'10px 16px',
+              borderBottom:'1px solid rgba(71,130,211,0.06)',height:36
+            }}>
+              <div style={{ width:8,height:8,borderRadius:'50%',background: p.status === 'active' ? 'var(--green)' : 'var(--muted)',flexShrink:0 }} />
+              <span style={{ fontSize:12,fontWeight:600,color:'var(--white)',minWidth:80 }}>{p.name}</span>
+              <span style={{ fontSize:11,color:'var(--muted-light)' }}>{quickRefSummary[id]}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          {/* Platform Cards — 2 column grid */}
+          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:24 }}>
+            {platforms.map(([id, p]) => <PlatformCard key={id} id={id} platform={p} />)}
+          </div>
+
+          {/* GlobalAir Rules Panel */}
+          <div style={{ background:'var(--navy-light)',border:'1px solid rgba(71,130,211,0.1)',borderRadius:8,padding:18,marginBottom:20 }}>
+            <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:14,color:'var(--white)',marginBottom:14 }}>
+              GlobalAir.com Cross-Platform Rules
+            </div>
+            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px 20px' }}>
+              {GLOBALAIR_RULES.map((r, i) => (
+                <div key={i} style={{
+                  display:'flex',alignItems:'flex-start',gap:8,padding:'6px 0',
+                  borderBottom:'1px solid rgba(71,130,211,0.04)'
+                }}>
+                  <span style={{
+                    flexShrink:0,marginTop:2,width:6,height:6,borderRadius:'50%',
+                    background: r.critical ? 'var(--red)' : 'var(--green)'
+                  }} />
+                  <span style={{
+                    fontSize:11,color: r.critical ? 'var(--white)' : 'var(--muted-light)',
+                    fontWeight: r.critical ? 600 : 400,lineHeight:1.5
+                  }}>{r.rule}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop:10,fontSize:9,color:'var(--muted)' }}>
+              <span style={{ display:'inline-block',width:6,height:6,borderRadius:'50%',background:'var(--red)',marginRight:4,verticalAlign:'middle' }} /> Critical — violation causes brand/attribution risk
+              <span style={{ margin:'0 8px' }}>|</span>
+              <span style={{ display:'inline-block',width:6,height:6,borderRadius:'50%',background:'var(--green)',marginRight:4,verticalAlign:'middle' }} /> Standard — best practice
+            </div>
+          </div>
+
+          {/* Content Mix Table */}
+          <div style={{ background:'var(--navy-light)',border:'1px solid rgba(71,130,211,0.1)',borderRadius:8,padding:18 }}>
+            <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:14,color:'var(--white)',marginBottom:14 }}>
+              Recommended Content Mix
+            </div>
+            <table style={{ width:'100%',borderCollapse:'collapse' }}>
+              <thead>
+                <tr>
+                  {['Content Type', 'Target %', 'Description'].map(h => (
+                    <th key={h} style={{ textAlign:'left',fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--muted)',padding:'0 10px 10px 0' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {CONTENT_MIX.map((m, i) => (
+                  <tr key={i} style={{ borderTop:'1px solid rgba(71,130,211,0.06)' }}>
+                    <td style={{ padding:'8px 10px 8px 0',fontSize:12,fontWeight:600,color:'var(--white)' }}>{m.type}</td>
+                    <td style={{ padding:'8px 10px 8px 0',fontSize:12,color:'var(--green)',fontWeight:700 }}>{m.target}</td>
+                    <td style={{ padding:'8px 10px 8px 0',fontSize:11,color:'var(--muted-light)' }}>{m.description}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   PLACEHOLDER VIEWS (Pages 1-7)
+   ============================================================ */
+function PlaceholderView({ viewId }) {
+  const meta = VIEWS.find(v => v.id === viewId);
+  const descriptions = {
+    command: 'Dashboard — KPIs, Windsor data, integrity score, cadence grid, alerts. Building next.',
+    plan: 'Monthly content calendar with readiness gates, recurring post locks.',
+    produce: 'Kanban pipeline, brief creation, UTM builder, task board.',
+    learn: 'Performance analytics — leaderboards, funnel, attribution health.',
+    compete: 'Competitive intelligence — vulnerability scoring, model coverage.',
+    library: 'Templates, copy bank, UTM presets, sponsor kits.',
+    requests: 'Team request intake, triage, status tracking.'
+  };
+  return (
+    <div style={{ display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',textAlign:'center',padding:40 }}>
+      <div style={{ fontSize:48,marginBottom:16,opacity:0.3 }}>{meta?.icon}</div>
+      <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:20,color:'var(--white)',marginBottom:8 }}>
+        {meta?.label} View
+      </div>
+      <div style={{ fontSize:12,color:'var(--muted)',maxWidth:400,lineHeight:1.6 }}>
+        {descriptions[viewId] || 'Coming soon.'}
+      </div>
+      <div style={{ marginTop:20,fontSize:10,color:'var(--muted)',background:'rgba(71,130,211,0.08)',padding:'6px 14px',borderRadius:100 }}>
+        Page {meta?.page} of 8 — Next build phase
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   SETTINGS VIEW
+   ============================================================ */
+function SettingsView() {
+  const [settings, setSettings] = useState(Store.get('settings'));
+  const sprint = Store.getSprintInfo();
+  const usage = new Blob([localStorage.getItem(STORE_KEY) || '']).size;
+
+  function updateSetting(path, value) {
+    Store.set(`settings.${path}`, value);
+    setSettings(Store.get('settings'));
+  }
+
+  function handleExport() {
+    const json = JSON.stringify(Store.get(), null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `globalair_hub_backup_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function SettingRow({ label, description, children }) {
+    return (
+      <div style={{ marginBottom:14 }}>
+        <label style={{ display:'block',fontSize:9,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--muted)',marginBottom:4 }}>{label}</label>
+        {children}
+        {description && <div style={{ fontSize:10,color:'var(--muted)',marginTop:3 }}>{description}</div>}
+      </div>
+    );
+  }
+
+  function Toggle({ value, onChange }) {
+    return (
+      <button onClick={() => onChange(!value)} style={{
+        width:36,height:20,borderRadius:10,border:'none',cursor:'pointer',position:'relative',
+        background: value ? 'var(--green)' : 'rgba(71,130,211,0.2)',transition:'background 180ms'
+      }}>
+        <div style={{ width:16,height:16,borderRadius:'50%',background:'var(--white)',position:'absolute',top:2,left: value ? 18 : 2,transition:'left 180ms' }} />
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ padding:20,overflowY:'auto',height:'100%',maxWidth:700 }}>
+      <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:18,color:'var(--white)',marginBottom:20 }}>Settings</div>
+
+      {/* Sprint */}
+      <div style={{ background:'var(--navy-light)',border:'1px solid rgba(71,130,211,0.1)',borderRadius:8,padding:18,marginBottom:16 }}>
+        <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:13,color:'var(--white)',marginBottom:12 }}>Sprint Configuration</div>
+        <div style={{ display:'flex',gap:24,marginBottom:12 }}>
+          <div><div style={{ fontSize:9,color:'var(--muted)',textTransform:'uppercase' }}>Sprint</div><div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:22,color:'var(--white)' }}>{sprint.number}</div></div>
+          <div><div style={{ fontSize:9,color:'var(--muted)',textTransform:'uppercase' }}>Day</div><div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:22,color:'var(--white)' }}>{sprint.day}</div></div>
+        </div>
+        <SettingRow label="Sprint Start Date">
+          <input type="date" value={settings.sprint_start_date || ''} onChange={e => updateSetting('sprint_start_date', e.target.value)}
+            style={{ background:'rgba(71,130,211,0.08)',border:'1px solid rgba(71,130,211,0.15)',borderRadius:4,padding:'6px 10px',fontSize:12,color:'var(--muted-light)',width:200 }} />
+        </SettingRow>
+      </div>
+
+      {/* Measurement Signals */}
+      <div style={{ background:'var(--navy-light)',border:'1px solid rgba(71,130,211,0.1)',borderRadius:8,padding:18,marginBottom:16 }}>
+        <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:13,color:'var(--white)',marginBottom:12 }}>Measurement Integrity Signals</div>
+        {[
+          { key: 'callrail_active', label: 'CallRail Active', desc: '20pts — phone inquiry tracking' },
+          { key: 'ga4_clean_segment', label: 'GA4 Clean Segment', desc: '20pts — Email_Open_ filter confirmed' },
+          { key: 'crm_utm_capture', label: 'CRM UTM Capture', desc: '15pts — gclid/UTM in CRM' },
+          { key: 'avblast_retargeting', label: 'AvBlast Retargeting', desc: '15pts — email retargeting sync' }
+        ].map(s => (
+          <div key={s.key} style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid rgba(71,130,211,0.04)' }}>
+            <div>
+              <div style={{ fontSize:12,color:'var(--muted-light)',fontWeight:500 }}>{s.label}</div>
+              <div style={{ fontSize:10,color:'var(--muted)' }}>{s.desc}</div>
+            </div>
+            <Toggle value={settings[s.key]} onChange={v => updateSetting(s.key, v)} />
+          </div>
+        ))}
+        <SettingRow label="NBAA SDC Booth Number" description="Set to null to trigger alert banner block">
+          <input type="text" value={settings.nbaa_sdc_booth || ''} onChange={e => updateSetting('nbaa_sdc_booth', e.target.value || null)}
+            placeholder="e.g., #1234"
+            style={{ background:'rgba(71,130,211,0.08)',border:'1px solid rgba(71,130,211,0.15)',borderRadius:4,padding:'6px 10px',fontSize:12,color:'var(--muted-light)',width:200,marginTop:8 }} />
+        </SettingRow>
+      </div>
+
+      {/* Data Management */}
+      <div style={{ background:'var(--navy-light)',border:'1px solid rgba(71,130,211,0.1)',borderRadius:8,padding:18 }}>
+        <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:13,color:'var(--white)',marginBottom:12 }}>Data Management</div>
+        <div style={{ display:'flex',gap:8,marginBottom:8 }}>
+          <button onClick={handleExport} style={{ background:'rgba(71,130,211,0.1)',border:'1px solid rgba(71,130,211,0.15)',borderRadius:4,padding:'6px 14px',fontSize:11,color:'var(--muted-light)' }}>Export JSON</button>
+        </div>
+        <div style={{ fontSize:10,color:'var(--muted)' }}>Storage: {(usage / 1024).toFixed(1)} KB</div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   APP — Root Component
+   ============================================================ */
+function App() {
+  const [currentView, setCurrentView] = useState(Store.get('lastModule') || 'command');
+  const [navParams, setNavParams] = useState({});
+  const [toast, setToast] = useState(null);
+  const sprintInfo = Store.getSprintInfo();
+
+  function navigate(viewId, params = {}) {
+    setCurrentView(viewId);
+    setNavParams(params);
+    Store.set('lastModule', viewId);
+    logEvent('navigate', { from: currentView, to: viewId, params });
+  }
+
+  function showToast(message, type = 'info') {
+    setToast({ message, type, key: Date.now() });
+  }
+
+  const navContext = useMemo(() => ({ navigate, showToast, params: navParams }), [currentView, navParams]);
+
+  function renderView() {
+    switch (currentView) {
+      case 'channel':  return <ChannelView />;
+      case 'settings': return <SettingsView />;
+      default:         return <PlaceholderView viewId={currentView} />;
+    }
+  }
+
+  return (
+    <NavContext.Provider value={navContext}>
+      <div style={{ display:'flex',height:'100vh',width:'100vw' }}>
+        {/* Sidebar */}
+        <Sidebar currentView={currentView} onNavigate={navigate} />
+
+        {/* Main content */}
+        <div style={{ flex:1,display:'flex',flexDirection:'column',minWidth:0 }}>
+          <Topbar currentView={currentView} sprintInfo={sprintInfo} />
+
+          {/* Settings nav item (below main views in sidebar — adding as route only) */}
+          <main style={{ flex:1,overflowY:'auto' }}>
+            {renderView()}
+          </main>
+        </div>
+      </div>
+
+      {/* Toast */}
+      {toast && <Toast key={toast.key} message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+    </NavContext.Provider>
+  );
+}
+
+/* ============================================================
+   MOUNT
+   ============================================================ */
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
