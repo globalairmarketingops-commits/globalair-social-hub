@@ -313,6 +313,10 @@ const DEFAULT_STATE = {
     { id:'comp-005', name:'AOPA Marketplace', platforms:{ linkedin:{posts_week:5}, facebook:{posts_week:10}, instagram:{posts_week:5}, x:{posts_week:7}, youtube:{posts_week:2}, tiktok:{posts_week:1} }}
   ],
   manual_platform_data: {},
+  tasks: [],
+  experiments: [],
+  deliverables: [],
+  utm_presets: [],
   requests: [
     { id: 'seed-req-001', type: 'design_asset', title: 'NBAA SDC social countdown template', description: 'Need countdown template for NBAA SDC event social posts. 3-slide carousel format for Instagram + single image for LinkedIn/Facebook.', priority: 'P1', status: 'submitted', requestor: 'keaton', assignee: null, deadline: null, related_brief_id: null, created_date: '2026-03-18T10:00:00Z', updated_date: '2026-03-18T10:00:00Z', notes: '' },
     { id: 'seed-req-002', type: 'tech_dev', title: 'Add CallRail GTM tag to all 8 servers', description: 'CallRail tracking tag needs deployment across all 8 GlobalAir servers via GTM. Coordinate with Thomas Galla at BluegrassNet.', priority: 'P0', status: 'triaged', requestor: 'casey', assignee: 'casey', deadline: '2026-03-25T00:00:00Z', related_brief_id: null, created_date: '2026-03-15T09:00:00Z', updated_date: '2026-03-16T14:00:00Z', notes: 'Routed to dev sprint. Thomas confirmed GTM access on 6 of 8 servers.' },
@@ -2359,14 +2363,1125 @@ function PlanView() {
 }
 
 /* ============================================================
-   PLACEHOLDER VIEWS (Pages 3-6)
+   PRODUCE VIEW (Page 3) — Kanban Pipeline + Task Board
+   ============================================================ */
+const KANBAN_COLUMNS = [
+  { id: 'backlog', label: 'Backlog' },
+  { id: 'brief_ready', label: 'Brief Ready' },
+  { id: 'in_production', label: 'In Production' },
+  { id: 'ready_to_schedule', label: 'Ready to Schedule' },
+  { id: 'scheduled', label: 'Scheduled' }
+];
+
+const STATUS_ADVANCE_RULES = {
+  backlog:             { next: 'brief_ready',       gate: null },
+  brief_ready:         { next: 'in_production',     gate: null },
+  in_production:       { next: 'ready_to_schedule', gate: 'all_8_gates_true' },
+  ready_to_schedule:   { next: 'scheduled',         gate: 'yellow_reviewed_if_yellow' },
+  scheduled:           { next: 'published',          gate: null }
+};
+
+const SWIMLANES = {
+  content_production: { label: 'Content Production', color: '#4782D3' },
+  assets_needed:      { label: 'Assets Needed',      color: '#7B68EE' },
+  landing_utm:        { label: 'Landing Page/UTM',   color: '#97CB00' },
+  sponsor:            { label: 'Sponsor Deliverables', color: '#F59E0B' },
+  community:          { label: 'Community Management', color: '#69C9D0' },
+  experiments:        { label: 'Experiments',         color: '#E1306C' }
+};
+
+const BRIEF_GENERATOR_URL = ''; // Set before Apps Script integration
+
+const READINESS_GATE_LABELS = {
+  copy_approved: 'Copy approved',
+  image_selected: 'Image selected',
+  utm_created: 'UTM created',
+  tinyurl_generated: 'TinyURL generated',
+  canva_linked: 'Canva asset linked',
+  publish_time_locked: 'Publish time locked',
+  platform_confirmed: 'Platform confirmed',
+  broker_tag_confirmed: 'Broker tag confirmed'
+};
+
+const YELLOW_LANE_TYPES = ['competitive','pricing','comparison','negative','controversial'];
+
+const CONTENT_TYPES = [
+  'listing','education','market_analysis','buyer_guide','event','fbo_spotlight',
+  'competitive','pricing','comparison','ramp_ramble','brokernet','lifestyle'
+];
+
+const PRODUCE_SEED_BRIEFS = [
+  { id:'seed-brief-001', aircraft_year:'2018', aircraft_make:'Cessna', aircraft_model:'172S', total_time:1240, price:389000, location:'Louisville, KY', broker_name:'Southeast Aviation', broker_handle:'@southeastav', platforms:['facebook','instagram'], content_type:'listing', content_bucket:'Listing', funnel_stage:'Intent', utm_string:{facebook:'utm_source=facebook&utm_medium=social&utm_campaign=spring-listings&utm_content=cessna_172s',instagram:'utm_source=instagram&utm_medium=social&utm_campaign=spring-listings&utm_content=cessna_172s'}, destination_url:'https://globalair.com/aircraft-for-sale/cessna-172s', tinyurl:null, created_date:'2026-03-18T09:00:00Z', status:'backlog', approval_lane:'green', owner:'keaton', readiness_gates:{copy_approved:false,image_selected:false,utm_created:true,tinyurl_generated:false,canva_linked:false,publish_time_locked:false,platform_confirmed:true,broker_tag_confirmed:false}, info_gate_cleared:true, reviewed_by_casey:false, drive_brief_url:null },
+  { id:'seed-brief-002', aircraft_year:'2015', aircraft_make:'Cirrus', aircraft_model:'SR22T', total_time:890, price:549000, location:'Scottsdale, AZ', broker_name:'Desert Sky Aviation', broker_handle:'@desertskyav', platforms:['facebook','instagram','x'], content_type:'listing', content_bucket:'Listing', funnel_stage:'Intent', utm_string:{facebook:'utm_source=facebook&utm_medium=social&utm_campaign=spring-listings&utm_content=cirrus_sr22t',instagram:'utm_source=instagram&utm_medium=social&utm_campaign=spring-listings&utm_content=cirrus_sr22t',x:'utm_source=x&utm_medium=social&utm_campaign=spring-listings&utm_content=cirrus_sr22t'}, destination_url:'https://globalair.com/aircraft-for-sale/cirrus-sr22t', tinyurl:'https://tinyurl.com/abc123', created_date:'2026-03-17T14:00:00Z', status:'brief_ready', approval_lane:'green', owner:'keaton', readiness_gates:{copy_approved:true,image_selected:true,utm_created:true,tinyurl_generated:true,canva_linked:false,publish_time_locked:false,platform_confirmed:true,broker_tag_confirmed:true}, info_gate_cleared:true, reviewed_by_casey:false, drive_brief_url:null },
+  { id:'seed-brief-003', aircraft_year:'2020', aircraft_make:'Gulfstream', aircraft_model:'G280', total_time:1650, price:null, location:'Teterboro, NJ', broker_name:'Jet Access International', broker_handle:'@jetaccess', platforms:['linkedin'], content_type:'listing', content_bucket:'Listing', funnel_stage:'Intent', utm_string:{linkedin:'utm_source=linkedin&utm_medium=social&utm_campaign=jet-showcase&utm_content=gulfstream_g280'}, destination_url:'https://globalair.com/aircraft-for-sale/gulfstream-g280', tinyurl:'https://tinyurl.com/g280jet', created_date:'2026-03-16T11:00:00Z', status:'in_production', approval_lane:'green', owner:'keaton', readiness_gates:{copy_approved:true,image_selected:true,utm_created:true,tinyurl_generated:true,canva_linked:true,publish_time_locked:false,platform_confirmed:true,broker_tag_confirmed:true}, info_gate_cleared:true, reviewed_by_casey:false, drive_brief_url:null },
+  { id:'seed-brief-004', aircraft_year:'2019', aircraft_make:'Beechcraft', aircraft_model:'King Air 350i', total_time:2100, price:6200000, location:'Van Nuys, CA', broker_name:'Pacific Aviation', broker_handle:'@pacificav', platforms:['linkedin','facebook'], content_type:'market_analysis', content_bucket:'Pilot-Direct', funnel_stage:'Consideration', utm_string:{linkedin:'utm_source=linkedin&utm_medium=social&utm_campaign=turboprop-market&utm_content=beechcraft_king_air_350i',facebook:'utm_source=facebook&utm_medium=social&utm_campaign=turboprop-market&utm_content=beechcraft_king_air_350i'}, destination_url:'', tinyurl:null, created_date:'2026-03-15T08:00:00Z', status:'ready_to_schedule', approval_lane:'yellow', owner:'keaton', readiness_gates:{copy_approved:true,image_selected:true,utm_created:true,tinyurl_generated:false,canva_linked:true,publish_time_locked:true,platform_confirmed:true,broker_tag_confirmed:true}, info_gate_cleared:true, reviewed_by_casey:false, drive_brief_url:null },
+  { id:'seed-brief-005', aircraft_year:'2022', aircraft_make:'Citation', aircraft_model:'CJ4 Gen2', total_time:520, price:11500000, location:'White Plains, NY', broker_name:'Textron Aviation', broker_handle:'@txtav', platforms:['linkedin'], content_type:'listing', content_bucket:'Listing', funnel_stage:'Intent', utm_string:{linkedin:'utm_source=linkedin&utm_medium=social&utm_campaign=jet-showcase&utm_content=citation_cj4_gen2'}, destination_url:'https://globalair.com/aircraft-for-sale/citation-cj4', tinyurl:'https://tinyurl.com/cj4gen2', created_date:'2026-03-14T10:00:00Z', status:'scheduled', approval_lane:'green', owner:'keaton', readiness_gates:{copy_approved:true,image_selected:true,utm_created:true,tinyurl_generated:true,canva_linked:true,publish_time_locked:true,platform_confirmed:true,broker_tag_confirmed:true}, info_gate_cleared:true, reviewed_by_casey:true, drive_brief_url:null },
+  { id:'seed-brief-006', aircraft_year:'2016', aircraft_make:'Piper', aircraft_model:'M600', total_time:1800, price:2100000, location:'Vero Beach, FL', broker_name:'Piper Aircraft', broker_handle:'@paborondemand', platforms:['facebook','instagram'], content_type:'education', content_bucket:'Pilot-Direct', funnel_stage:'Awareness', utm_string:{facebook:'utm_source=facebook&utm_medium=social&utm_campaign=owner-guides&utm_content=piper_m600',instagram:'utm_source=instagram&utm_medium=social&utm_campaign=owner-guides&utm_content=piper_m600'}, destination_url:'', tinyurl:null, created_date:'2026-03-19T15:00:00Z', status:'backlog', approval_lane:'green', owner:'keaton', readiness_gates:{copy_approved:false,image_selected:false,utm_created:true,tinyurl_generated:false,canva_linked:false,publish_time_locked:false,platform_confirmed:true,broker_tag_confirmed:false}, info_gate_cleared:true, reviewed_by_casey:false, drive_brief_url:null },
+  { id:'seed-brief-007', aircraft_year:'2021', aircraft_make:'Bell', aircraft_model:'505 Jet Ranger X', total_time:340, price:1950000, location:'Dallas, TX', broker_name:'Heli-One', broker_handle:'@helione', platforms:['instagram','facebook'], content_type:'listing', content_bucket:'Listing', funnel_stage:'Intent', utm_string:{instagram:'utm_source=instagram&utm_medium=social&utm_campaign=heli-listings&utm_content=bell_505_jet_ranger_x',facebook:'utm_source=facebook&utm_medium=social&utm_campaign=heli-listings&utm_content=bell_505_jet_ranger_x'}, destination_url:'https://globalair.com/aircraft-for-sale/bell-505', tinyurl:null, created_date:'2026-03-19T16:30:00Z', status:'brief_ready', approval_lane:'green', owner:'keaton', readiness_gates:{copy_approved:true,image_selected:false,utm_created:true,tinyurl_generated:false,canva_linked:false,publish_time_locked:false,platform_confirmed:true,broker_tag_confirmed:true}, info_gate_cleared:true, reviewed_by_casey:false, drive_brief_url:null },
+  { id:'seed-brief-008', aircraft_year:'2017', aircraft_make:'Diamond', aircraft_model:'DA62', total_time:620, price:null, location:'Wiener Neustadt, Austria', broker_name:'Diamond Sales', broker_handle:'@diamondaircraft', platforms:['instagram'], content_type:'competitive', content_bucket:'Pilot-Direct', funnel_stage:'Awareness', utm_string:{instagram:'utm_source=instagram&utm_medium=social&utm_campaign=aero-2026&utm_content=diamond_da62'}, destination_url:'', tinyurl:null, created_date:'2026-03-20T08:00:00Z', status:'backlog', approval_lane:'yellow', owner:'keaton', readiness_gates:{copy_approved:false,image_selected:false,utm_created:true,tinyurl_generated:false,canva_linked:false,publish_time_locked:false,platform_confirmed:true,broker_tag_confirmed:false}, info_gate_cleared:true, reviewed_by_casey:false, drive_brief_url:null }
+];
+
+const PRODUCE_SEED_TASKS = [
+  { id:'seed-task-001', title:'Build NBAA SDC social countdown', tier:'T1', tags:['#event','#nbaa'], owner:'keaton', due_date:'2026-03-20T00:00:00Z', status:'active', priority:'P0', created_date:'2026-03-15T09:00:00Z' },
+  { id:'seed-task-002', title:'Produce 5 AvGeek TikTok scripts', tier:'T2', tags:['#tiktok','#avgeek'], owner:'keaton', due_date:'2026-03-22T00:00:00Z', status:'draft', priority:'P1', created_date:'2026-03-16T10:00:00Z' },
+  { id:'seed-task-003', title:'March FBO of the Month graphic', tier:'T2', tags:['#fbo','#recurring'], owner:'abby', due_date:'2026-03-28T00:00:00Z', status:'draft', priority:'P1', created_date:'2026-03-14T08:00:00Z' },
+  { id:'seed-task-004', title:'Ian LinkedIn NBAA SDC preview', tier:'T1', tags:['#linkedin','#authority'], owner:'casey', due_date:'2026-03-19T00:00:00Z', status:'review', priority:'P0', created_date:'2026-03-12T11:00:00Z' },
+  { id:'seed-task-005', title:'IG carousel: Top 5 Piston under $200K', tier:'T2', tags:['#instagram','#avgeek'], owner:'keaton', due_date:'2026-03-21T00:00:00Z', status:'approved', priority:'P1', created_date:'2026-03-13T14:00:00Z' }
+];
+
+const PRODUCE_SEED_EXPERIMENTS = [
+  { id:'seed-exp-001', hypothesis:'Hook test: Question vs Claim on education carousel (IG)', platform:'instagram', owner:'keaton', due_date:'2026-03-22T00:00:00Z', status:'running', result:null, notes:'' },
+  { id:'seed-exp-002', hypothesis:'CTA test: "Get checklist" vs "See listings" on Market Pulse (LI)', platform:'linkedin', owner:'casey', due_date:'2026-03-23T00:00:00Z', status:'running', result:null, notes:'' }
+];
+
+const PRODUCE_SEED_DELIVERABLES = [
+  { id:'seed-del-001', title:'AERO Friedrichshafen Jet Spotlight landing page review', type:'event', owner:'casey', due_date:'2026-03-25T00:00:00Z', status:'in_progress' }
+];
+
+function ProduceView() {
+  const nav = useNav();
+  const [subTab, setSubTab] = useState('pipeline');
+  const [briefs, setBriefs] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [experiments, setExperiments] = useState([]);
+  const [deliverables, setDeliverables] = useState([]);
+  const [expandedBrief, setExpandedBrief] = useState(null);
+  const [showNewBrief, setShowNewBrief] = useState(false);
+  const [showNewTask, setShowNewTask] = useState(false);
+  const [tierFilter, setTierFilter] = useState('all');
+  const [refresh, setRefresh] = useState(0);
+
+  // Normalize briefs from Plan View schema to Produce schema
+  function normalizeBrief(b) {
+    if (b.aircraft_make) return b; // already Produce schema
+    return {
+      ...b,
+      aircraft_year: b.aircraft ? b.aircraft.split(' ')[0] : '',
+      aircraft_make: b.make || (b.aircraft ? b.aircraft.split(' ').slice(1,-1).join(' ') : ''),
+      aircraft_model: b.model || (b.aircraft ? b.aircraft.split(' ').slice(-1)[0] : ''),
+      broker_name: b.broker || '', broker_handle: '',
+      platforms: b.platform ? [b.platform] : [],
+      content_type: b.bucket || 'listing',
+      utm_string: b.utm ? { [b.platform||'unknown']: b.utm } : {},
+      created_date: b.createdAt || b.target_date || new Date().toISOString(),
+      approval_lane: b.lane || 'green',
+      readiness_gates: b.gates || { copy_approved:false, image_selected:false, utm_created:false, tinyurl_generated:false, canva_linked:false, publish_time_locked:false, platform_confirmed:false, broker_tag_confirmed:false },
+      info_gate_cleared: b.info_gate_cleared !== undefined ? b.info_gate_cleared : true,
+      reviewed_by_casey: b.reviewed_by_casey || false,
+      total_time: b.total_time || null, price: b.price || null, location: b.location || '',
+      destination_url: b.destination_url || '', tinyurl: b.tinyurl || null,
+      drive_brief_url: b.drive_brief_url || null, owner: b.owner || 'keaton',
+      funnel_stage: b.stage || 'Intent', content_bucket: b.bucket || 'Listing'
+    };
+  }
+
+  // Load data
+  useEffect(() => {
+    let bl = (Store.get('brief_log') || []).map(normalizeBrief);
+    // Merge Produce seed briefs if they don't exist
+    const hasProduceSeeds = bl.some(b => b.id && b.id.startsWith('seed-brief'));
+    if (!hasProduceSeeds) { bl = [...bl, ...PRODUCE_SEED_BRIEFS]; Store.set('brief_log', bl); }
+    setBriefs(bl);
+
+    let tk = Store.get('tasks') || [];
+    if (tk.length === 0) { tk = PRODUCE_SEED_TASKS; Store.set('tasks', tk); }
+    setTasks(tk);
+
+    let ex = Store.get('experiments') || [];
+    if (ex.length === 0) { ex = PRODUCE_SEED_EXPERIMENTS; Store.set('experiments', ex); }
+    setExperiments(ex);
+
+    let dl = Store.get('deliverables') || [];
+    if (dl.length === 0) { dl = PRODUCE_SEED_DELIVERABLES; Store.set('deliverables', dl); }
+    setDeliverables(dl);
+  }, [refresh]);
+
+  // Navigate param: open specific brief
+  useEffect(() => {
+    if (nav.params?.brief_id) {
+      const b = briefs.find(x => x.id === nav.params.brief_id);
+      if (b) { setSubTab('pipeline'); setExpandedBrief(b); }
+    }
+  }, [nav.params, briefs]);
+
+  function reload() { setRefresh(r => r + 1); }
+
+  const platformColors = { linkedin:'#0A66C2', facebook:'#7B68EE', instagram:'#E1306C', x:'#888', tiktok:'#69C9D0', youtube:'#FF0000' };
+  const platformLabels = { linkedin:'LI', facebook:'FB', instagram:'IG', x:'X', tiktok:'TT', youtube:'YT' };
+
+  function briefAge(b) { return ((Date.now() - new Date(b.created_date).getTime()) / 86400000).toFixed(1); }
+  function gateCount(b) { if (!b.readiness_gates) return { done:0, total:8 }; const vals = Object.values(b.readiness_gates); return { done: vals.filter(Boolean).length, total: vals.length }; }
+
+  function advanceBrief(brief) {
+    const rule = STATUS_ADVANCE_RULES[brief.status];
+    if (!rule) return;
+    if (rule.gate === 'all_8_gates_true') {
+      const g = gateCount(brief);
+      if (g.done < g.total) { nav.showToast('All 8 readiness gates must be checked first', 'error'); return; }
+    }
+    if (rule.gate === 'yellow_reviewed_if_yellow' && brief.approval_lane === 'yellow' && !brief.reviewed_by_casey) {
+      nav.showToast('YELLOW lane — Casey review required before scheduling', 'error'); return;
+    }
+    logEvent('brief_card_status_advanced', { brief_id: brief.id, from_status: brief.status, to_status: rule.next, platform: brief.platforms?.[0], aircraft_make: brief.aircraft_make });
+    Store.update('brief_log', brief.id, { status: rule.next });
+    Store.logActivity('brief_advanced', brief.aircraft_make + ' ' + brief.aircraft_model + ' → ' + rule.next);
+    nav.showToast('Brief moved to ' + KANBAN_COLUMNS.find(c=>c.id===rule.next)?.label, 'success');
+    reload();
+  }
+
+  function toggleGate(briefId, gate) {
+    const bl = Store.get('brief_log');
+    const b = bl.find(x => x.id === briefId);
+    if (!b) return;
+    b.readiness_gates[gate] = !b.readiness_gates[gate];
+    Store.set('brief_log', bl);
+    reload();
+  }
+
+  function deleteBrief(briefId) {
+    Store.remove('brief_log', briefId);
+    setExpandedBrief(null);
+    Store.logActivity('brief_deleted', briefId);
+    nav.showToast('Brief deleted', 'info');
+    reload();
+  }
+
+  function saveTinyUrl(briefId, url) {
+    const bl = Store.get('brief_log');
+    const b = bl.find(x => x.id === briefId);
+    if (!b) return;
+    b.tinyurl = url;
+    if (url) b.readiness_gates.tinyurl_generated = true;
+    Store.set('brief_log', bl);
+    reload();
+  }
+
+  // Sub-tab bar
+  const tabs = [
+    { id:'pipeline', label:'Pipeline' },
+    { id:'blocked', label:'Blocked' },
+    { id:'ops', label:'Ops Dashboard' },
+    { id:'experiments', label:'Experiments' },
+    { id:'deliverables', label:'Deliverables' }
+  ];
+
+  const tabStyle = (active) => ({
+    background:'none', border:'none', borderBottom: active ? '2px solid var(--green)' : '2px solid transparent',
+    color: active ? 'var(--white)' : 'var(--muted)', fontSize:11, fontWeight:600, padding:'8px 14px',
+    cursor:'pointer', fontFamily:'var(--font-body)', transition:'all 0.15s'
+  });
+
+  const blockedBriefs = briefs.filter(b => !b.info_gate_cleared || (b.status === 'ready_to_schedule' && Object.values(b.readiness_gates || {}).some(v => !v)));
+
+  return (
+    <div style={{ padding:'16px 20px', height:'100%', display:'flex', flexDirection:'column' }}>
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+          <div style={{ display:'flex', gap:0 }}>
+            {tabs.map(t => (
+              <button key={t.id} onClick={() => { setSubTab(t.id); if (t.id==='blocked') logEvent('blocked_brief_viewed',{blocked_count:blockedBriefs.length}); if (t.id==='ops') logEvent('ops_dashboard_viewed',{blocked_count:blockedBriefs.length}); }}
+                style={tabStyle(subTab === t.id)}>
+                {t.label}{t.id === 'blocked' && blockedBriefs.length > 0 ? ` (${blockedBriefs.length})` : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:8 }}>
+          <button onClick={() => setShowNewBrief(true)}
+            style={{ background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'6px 14px', fontSize:11, fontWeight:700, fontFamily:'var(--font-display)', cursor:'pointer' }}>
+            + New Brief
+          </button>
+          <button onClick={() => setShowNewTask(true)}
+            style={{ background:'rgba(71,130,211,0.12)', color:'var(--blue)', border:'1px solid rgba(71,130,211,0.2)', borderRadius:4, padding:'6px 14px', fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'var(--font-body)' }}>
+            + New Task
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex:1, overflowY:'auto' }}>
+        {subTab === 'pipeline' && <PipelineTab briefs={briefs} tasks={tasks} tierFilter={tierFilter} setTierFilter={setTierFilter}
+          onExpand={b => { setExpandedBrief(b); logEvent('brief_card_expanded',{brief_id:b.id,column:b.status}); }}
+          onAdvance={advanceBrief} platformColors={platformColors} platformLabels={platformLabels}
+          briefAge={briefAge} gateCount={gateCount} onTaskStatusChange={(id,st)=>{Store.update('tasks',id,{status:st}); logEvent('task_status_changed',{task_id:id,to_status:st}); reload();}} />}
+        {subTab === 'blocked' && <BlockedTab briefs={blockedBriefs} platformLabels={platformLabels} nav={nav} briefAge={briefAge}
+          onNavigateBrief={b => { setSubTab('pipeline'); setExpandedBrief(b); }} />}
+        {subTab === 'ops' && <OpsTab briefs={briefs} tasks={tasks} blockedBriefs={blockedBriefs} onGoBlocked={()=>setSubTab('blocked')} />}
+        {subTab === 'experiments' && <ExperimentsTab experiments={experiments} reload={reload} showToast={nav.showToast} />}
+        {subTab === 'deliverables' && <DeliverablesTab deliverables={deliverables} reload={reload} showToast={nav.showToast} />}
+      </div>
+
+      {/* Expanded Brief Drawer */}
+      {expandedBrief && <BriefDrawer brief={expandedBrief} onClose={()=>setExpandedBrief(null)}
+        onAdvance={advanceBrief} onToggleGate={toggleGate} onDelete={deleteBrief}
+        onSaveTinyUrl={saveTinyUrl} platformColors={platformColors} platformLabels={platformLabels}
+        gateCount={gateCount} briefAge={briefAge} reload={reload} />}
+
+      {/* New Brief Modal */}
+      {showNewBrief && <NewBriefModal onClose={()=>setShowNewBrief(false)} reload={reload} showToast={nav.showToast} />}
+
+      {/* New Task Modal */}
+      {showNewTask && <NewTaskModal onClose={()=>setShowNewTask(false)} reload={reload} showToast={nav.showToast} />}
+
+      {/* Footer links */}
+      <div style={{ display:'flex', gap:16, padding:'8px 0', borderTop:'1px solid rgba(71,130,211,0.08)', marginTop:8, fontSize:11 }}>
+        {BRIEF_GENERATOR_URL && <a href={BRIEF_GENERATOR_URL} target="_blank" rel="noopener" style={{ color:'var(--blue)' }}>Social Brief Generator</a>}
+        <a href="https://app.sendible.com" target="_blank" rel="noopener" style={{ color:'var(--blue)' }}>Open Sendible</a>
+      </div>
+    </div>
+  );
+}
+
+/* --- Pipeline Tab (Kanban + Task Board) --- */
+function PipelineTab({ briefs, tasks, tierFilter, setTierFilter, onExpand, onAdvance, platformColors, platformLabels, briefAge, gateCount, onTaskStatusChange }) {
+  const kanbanBriefs = briefs.filter(b => b.status !== 'published');
+  const colStyle = { minWidth:210, maxWidth:260, background:'rgba(26,47,168,0.15)', borderRadius:6, padding:10, flex:'0 0 auto' };
+  const cardBg = { background:'var(--navy)', border:'1px solid rgba(71,130,211,0.1)', borderRadius:6, padding:10, marginBottom:8, cursor:'pointer', transition:'border-color 0.15s' };
+
+  return (
+    <div>
+      {/* Kanban */}
+      <div style={{ display:'flex', gap:12, overflowX:'auto', paddingBottom:12, minHeight:320 }}>
+        {KANBAN_COLUMNS.map(col => {
+          const cards = kanbanBriefs.filter(b => b.status === col.id).sort((a,b) => new Date(a.created_date) - new Date(b.created_date));
+          return (
+            <div key={col.id} style={colStyle}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, paddingBottom:8, borderBottom:'1px solid rgba(71,130,211,0.1)' }}>
+                <span style={{ fontWeight:700, fontSize:11, textTransform:'uppercase', color:'var(--muted)', fontFamily:'var(--font-body)' }}>{col.label}</span>
+                <span style={{ fontSize:10, fontWeight:700, background:'rgba(71,130,211,0.1)', color:'var(--blue)', borderRadius:10, padding:'1px 6px' }}>{cards.length}</span>
+              </div>
+              {cards.length === 0 && (
+                <div style={{ fontSize:10, color:'var(--muted)', textAlign:'center', padding:'20px 10px', opacity:0.6 }}>
+                  {col.id === 'backlog' ? 'No briefs in backlog. Create one with + New Brief.' : 'Empty'}
+                </div>
+              )}
+              {cards.map(b => {
+                const gc = gateCount(b);
+                const age = parseFloat(briefAge(b));
+                const rule = STATUS_ADVANCE_RULES[b.status];
+                return (
+                  <div key={b.id} onClick={() => onExpand(b)} style={cardBg}
+                    onMouseEnter={e => e.currentTarget.style.borderColor='rgba(71,130,211,0.3)'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor='rgba(71,130,211,0.1)'}>
+                    {/* Aircraft */}
+                    <div style={{ fontSize:12, fontWeight:600, color:'var(--white)', marginBottom:4 }}>
+                      {b.aircraft_year} {b.aircraft_make} {b.aircraft_model}
+                    </div>
+                    {/* Platform pills */}
+                    <div style={{ display:'flex', gap:3, marginBottom:4, flexWrap:'wrap' }}>
+                      {(b.platforms||[]).map(p => (
+                        <span key={p} style={{ fontSize:9, fontWeight:700, background:platformColors[p]||'#888', color:'#fff', borderRadius:3, padding:'1px 5px' }}>
+                          {platformLabels[p]||p}
+                        </span>
+                      ))}
+                      {b.approval_lane === 'yellow' && <span style={{ fontSize:9, fontWeight:700, background:'var(--amber)', color:'var(--navy)', borderRadius:3, padding:'1px 5px' }}>YELLOW</span>}
+                    </div>
+                    {/* Broker */}
+                    <div style={{ fontSize:10, color:'var(--muted)', marginBottom:4 }}>Presented by: {b.broker_name}</div>
+                    {/* Footer: age + gates */}
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <span style={{ fontSize:10, color: age > 2 ? 'var(--red)' : 'var(--muted)', fontWeight: age > 2 ? 700 : 400 }}>{age}d</span>
+                      <span style={{ fontSize:10, color: gc.done === gc.total ? 'var(--green)' : 'var(--muted)' }}>{gc.done}/{gc.total}</span>
+                    </div>
+                    {/* Advance button */}
+                    {rule && (
+                      <button onClick={e => { e.stopPropagation(); onAdvance(b); }}
+                        style={{ marginTop:6, width:'100%', fontSize:10, fontWeight:600, padding:'4px 0', borderRadius:3, border:'none', cursor:'pointer',
+                          background: gc.done === gc.total || !rule.gate ? 'rgba(151,203,0,0.15)' : 'rgba(71,130,211,0.08)',
+                          color: gc.done === gc.total || !rule.gate ? 'var(--green)' : 'var(--muted)' }}>
+                        → {KANBAN_COLUMNS.find(c=>c.id===rule.next)?.label || rule.next}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Task Board */}
+      <div style={{ marginTop:16 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:13, color:'var(--white)' }}>Task Board</div>
+          <div style={{ display:'flex', gap:0 }}>
+            {['all','T1','T2','T3'].map(t => (
+              <button key={t} onClick={() => setTierFilter(t)}
+                style={{ background:'none', border:'none', borderBottom: tierFilter===t ? '2px solid var(--green)' : '2px solid transparent', color: tierFilter===t ? 'var(--white)' : 'var(--muted)', fontSize:10, fontWeight:600, padding:'4px 10px', cursor:'pointer', fontFamily:'var(--font-body)' }}>
+                {t === 'all' ? 'All' : t}
+              </button>
+            ))}
+          </div>
+        </div>
+        {tasks.filter(t => tierFilter === 'all' || t.tier === tierFilter)
+          .sort((a,b) => { const tp = {T1:1,T2:2,T3:3}; if (tp[a.tier] !== tp[b.tier]) return tp[a.tier]-tp[b.tier]; return new Date(a.due_date)-new Date(b.due_date); })
+          .sort((a,b) => (a.status==='done'?1:0) - (b.status==='done'?1:0))
+          .map(t => {
+            const overdue = t.status !== 'done' && new Date(t.due_date) < new Date();
+            const tierColors = { T1:{ bg:'var(--red)',c:'#fff' }, T2:{ bg:'var(--amber)',c:'var(--navy)' }, T3:{ bg:'var(--blue)',c:'#fff' } };
+            const tc = tierColors[t.tier] || tierColors.T3;
+            const statusCycle = ['active','draft','review','approved','done'];
+            return (
+              <div key={t.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid rgba(71,130,211,0.06)', opacity: t.status==='done' ? 0.5 : 1 }}>
+                <span style={{ fontSize:10, fontWeight:700, background:tc.bg, color:tc.c, borderRadius:3, padding:'2px 6px', minWidth:22, textAlign:'center' }}>{t.tier}</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:12, fontWeight:600, color: overdue ? 'var(--red)' : 'var(--white)', textDecoration: t.status==='done' ? 'line-through' : 'none' }}>
+                    {overdue && t.status !== 'done' && <span style={{ fontWeight:700, marginRight:4 }}>OVERDUE</span>}
+                    {t.title}
+                  </div>
+                  <div style={{ display:'flex', gap:4, marginTop:2 }}>
+                    {(t.tags||[]).map(tag => (
+                      <span key={tag} style={{ fontSize:9, fontWeight:600, background:'rgba(71,130,211,0.08)', color:'var(--blue)', borderRadius:10, padding:'1px 6px' }}>{tag}</span>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ fontSize:10, color:'var(--muted)', minWidth:50, textAlign:'center' }}>
+                  {TEAM_ROSTER.find(m=>m.key===t.owner)?.name.split(' ')[0] || t.owner}
+                </div>
+                <div style={{ fontSize:10, color: overdue ? 'var(--red)' : 'var(--muted)', minWidth:60, textAlign:'center' }}>
+                  {new Date(t.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+                </div>
+                <button onClick={() => { const sc = statusCycle; const idx = sc.indexOf(t.status); const next = sc[(idx+1)%sc.length]; onTaskStatusChange(t.id, next); }}
+                  style={{ fontSize:9, fontWeight:600, padding:'3px 8px', borderRadius:3, border:'1px solid rgba(71,130,211,0.2)', background:'rgba(71,130,211,0.06)', color:'var(--muted-light)', cursor:'pointer' }}>
+                  {t.status}
+                </button>
+              </div>
+            );
+          })}
+        {tasks.filter(t => tierFilter === 'all' || t.tier === tierFilter).length === 0 && (
+          <div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', padding:20 }}>No tasks in the board. Add a task with + New Task.</div>
+        )}
+      </div>
+
+      {/* Brief Output Log */}
+      <div style={{ marginTop:20 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:13, color:'var(--white)', marginBottom:8 }}>Brief Output Log</div>
+        <div style={{ fontSize:10 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'80px 1fr 80px 90px 80px', gap:8, padding:'6px 0', borderBottom:'1px solid rgba(71,130,211,0.1)', color:'var(--muted)', fontWeight:600 }}>
+            <span>ID</span><span>Aircraft</span><span>Platform</span><span>Created</span><span>Status</span>
+          </div>
+          {briefs.sort((a,b) => new Date(b.created_date) - new Date(a.created_date)).slice(0, 25).map(b => (
+            <div key={b.id} style={{ display:'grid', gridTemplateColumns:'80px 1fr 80px 90px 80px', gap:8, padding:'5px 0', borderBottom:'1px solid rgba(71,130,211,0.04)', color:'var(--muted-light)' }}>
+              <span style={{ fontFamily:'monospace', fontSize:9 }}>{b.id.slice(-6)}</span>
+              <span style={{ color:'var(--white)' }}>{b.aircraft_year} {b.aircraft_make} {b.aircraft_model}</span>
+              <span>{(b.platforms||[]).map(p=>platformLabels[p]).join(', ')}</span>
+              <span>{new Date(b.created_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>
+              <span style={{ color: b.status==='published' ? 'var(--green)' : b.status==='scheduled' ? 'var(--blue)' : 'var(--muted)' }}>{b.status}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* --- Blocked Tab --- */
+function BlockedTab({ briefs, platformLabels, nav, briefAge, onNavigateBrief }) {
+  if (briefs.length === 0) return (
+    <div style={{ textAlign:'center', padding:40 }}>
+      <div style={{ fontSize:24, marginBottom:8, color:'var(--green)' }}>✓</div>
+      <div style={{ fontSize:13, color:'var(--white)', fontWeight:600 }}>No blocked items</div>
+      <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>All posts are clear to progress.</div>
+    </div>
+  );
+  return (
+    <div>
+      {briefs.map(b => {
+        const hrs = ((Date.now() - new Date(b.created_date).getTime()) / 3600000).toFixed(1);
+        const isNbaa = !b.info_gate_cleared && b.event_id === 'nbaa-sdc-2026';
+        const missingGates = b.readiness_gates ? Object.entries(b.readiness_gates).filter(([k,v]) => !v).map(([k]) => READINESS_GATE_LABELS[k] || k) : [];
+        const reason = !b.info_gate_cleared ? (b.info_gate_description || 'Info gate not cleared') : ('Missing: ' + missingGates.join(', '));
+        return (
+          <div key={b.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 0', borderBottom:'1px solid rgba(71,130,211,0.07)', borderLeft: isNbaa ? '3px solid var(--red)' : missingGates.length ? '3px solid var(--amber)' : 'none', paddingLeft: 10 }}>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:13, fontWeight:600, color:'var(--white)' }}>{b.aircraft_year} {b.aircraft_make} {b.aircraft_model}</div>
+              <div style={{ fontSize:11, color:'var(--muted-light)', marginTop:2 }}>{(b.platforms||[]).map(p=>platformLabels[p]).join(', ')}</div>
+              <div style={{ fontSize:11, color:'var(--amber)', marginTop:2 }}>{reason}</div>
+            </div>
+            <div style={{ fontSize:10, color:'var(--muted)', minWidth:50 }}>{TEAM_ROSTER.find(m=>m.key===b.owner)?.name.split(' ')[0] || b.owner}</div>
+            <div style={{ fontSize:11, fontWeight: parseFloat(hrs) >= 24 ? 700 : 400, color: parseFloat(hrs) >= 24 ? 'var(--red)' : 'var(--muted)', minWidth:50 }}>{hrs}h</div>
+            <button onClick={() => { if (isNbaa) nav.navigate('settings',{scroll_to:'nbaa_booth'}); else onNavigateBrief(b); }}
+              style={{ fontSize:10, fontWeight:600, color:'var(--blue)', background:'none', border:'none', cursor:'pointer', padding:'4px 8px' }}>
+              Unblock
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* --- Ops Dashboard Tab --- */
+function OpsTab({ briefs, tasks, blockedBriefs, onGoBlocked }) {
+  const statusCounts = { backlog:0, brief_ready:0, in_production:0, ready_to_schedule:0, scheduled:0, published:0, blocked: blockedBriefs.length };
+  briefs.forEach(b => { if (statusCounts[b.status] !== undefined) statusCounts[b.status]++; });
+
+  const publishedBriefs = briefs.filter(b => b.status === 'published' && b.published_date);
+  let medianCycle = null;
+  if (publishedBriefs.length >= 3) {
+    const times = publishedBriefs.map(b => (new Date(b.published_date) - new Date(b.created_date)) / 3600000).sort((a,b)=>a-b);
+    medianCycle = times[Math.floor(times.length/2)].toFixed(0);
+  }
+
+  const slaBreach = briefs.filter(b => b.status === 'brief_ready' && (Date.now() - new Date(b.created_date).getTime()) > 86400000).length;
+
+  const counterCards = [
+    { label:'Backlog', val:statusCounts.backlog, color:'var(--blue)' },
+    { label:'Brief Ready', val:statusCounts.brief_ready, color:'var(--blue)' },
+    { label:'In Production', val:statusCounts.in_production, color:'var(--blue)' },
+    { label:'Ready to Sched.', val:statusCounts.ready_to_schedule, color:'var(--blue)' },
+    { label:'Scheduled', val:statusCounts.scheduled, color:'var(--blue)' },
+    { label:'Blocked', val:statusCounts.blocked, color: statusCounts.blocked > 0 ? 'var(--red)' : 'var(--green)' }
+  ];
+
+  // Top blockers
+  const topBlockers = blockedBriefs.sort((a,b) => new Date(a.created_date) - new Date(b.created_date)).slice(0, 3);
+
+  // Swimlane workload
+  const swimlaneCounts = {};
+  Object.keys(SWIMLANES).forEach(k => swimlaneCounts[k] = { total:0, blocked:0 });
+  // Simple assignment: group tasks by rough category
+  tasks.forEach(t => {
+    const key = t.tags?.some(g => g.includes('sponsor')) ? 'sponsor' : t.tags?.some(g => g.includes('experiment')) ? 'experiments' : 'content_production';
+    if (swimlaneCounts[key]) { swimlaneCounts[key].total++; if (t.status === 'draft') swimlaneCounts[key].blocked++; }
+  });
+
+  return (
+    <div>
+      {/* Pipeline counters */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(6, 1fr)', gap:10, marginBottom:20 }}>
+        {counterCards.map(c => (
+          <div key={c.label} style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:'12px 10px', textAlign:'center' }}>
+            <div style={{ fontSize:24, fontWeight:700, color:c.color, fontFamily:'var(--font-display)' }}>{c.val}</div>
+            <div style={{ fontSize:10, color:'var(--muted)', marginTop:4 }}>{c.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Metrics row */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:20 }}>
+        <div style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:14 }}>
+          <div style={{ fontSize:10, color:'var(--muted)', marginBottom:4, fontWeight:600 }}>Median Cycle Time</div>
+          <div style={{ fontSize:20, fontWeight:700, color:'var(--white)', fontFamily:'var(--font-display)' }}>
+            {medianCycle ? medianCycle + 'h' : 'Insufficient data'}
+          </div>
+          {!medianCycle && <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>Need 3+ published briefs</div>}
+        </div>
+        <div style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:14 }}>
+          <div style={{ fontSize:10, color:'var(--muted)', marginBottom:4, fontWeight:600 }}>Review SLA Breaches</div>
+          <div style={{ fontSize:20, fontWeight:700, color: slaBreach > 0 ? 'var(--amber)' : 'var(--green)', fontFamily:'var(--font-display)' }}>{slaBreach}</div>
+          <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>Briefs in "Brief Ready" {'>'}24h</div>
+        </div>
+      </div>
+
+      {/* Swimlane workload */}
+      <div style={{ marginBottom:20 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:12, color:'var(--white)', marginBottom:8 }}>Workload by Swimlane</div>
+        {Object.entries(SWIMLANES).map(([k, sw]) => {
+          const data = swimlaneCounts[k] || { total:0, blocked:0 };
+          return (
+            <div key={k} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+              <div style={{ fontSize:10, color:'var(--muted)', minWidth:120 }}>{sw.label}</div>
+              <div style={{ flex:1, height:14, background:'rgba(71,130,211,0.06)', borderRadius:3, overflow:'hidden', position:'relative' }}>
+                <div style={{ height:'100%', width: Math.min(data.total * 20, 100) + '%', background:sw.color, borderRadius:3, opacity:0.6 }} />
+                {data.blocked > 0 && <div style={{ position:'absolute', right:0, top:0, height:'100%', width: Math.min(data.blocked * 20, 100) + '%', background:'var(--red)', borderRadius:3, opacity:0.5 }} />}
+              </div>
+              <span style={{ fontSize:10, color:'var(--muted)', minWidth:20 }}>{data.total}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Top Blockers */}
+      <div>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:12, color:'var(--white)', marginBottom:8 }}>Top Blockers</div>
+        {topBlockers.length === 0 && <div style={{ fontSize:11, color:'var(--green)' }}>No blocked items.</div>}
+        {topBlockers.map(b => {
+          const hrs = ((Date.now() - new Date(b.created_date).getTime()) / 3600000).toFixed(0);
+          const missingGates = b.readiness_gates ? Object.entries(b.readiness_gates).filter(([k,v]) => !v).map(([k]) => READINESS_GATE_LABELS[k]||k) : [];
+          return (
+            <div key={b.id} onClick={onGoBlocked} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid rgba(71,130,211,0.06)', cursor:'pointer' }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:12, fontWeight:600, color:'var(--white)' }}>{b.aircraft_year} {b.aircraft_make} {b.aircraft_model}</div>
+                <div style={{ fontSize:10, color:'var(--amber)', marginTop:2 }}>Missing: {missingGates.join(', ')}</div>
+              </div>
+              <div style={{ fontSize:10, color:'var(--muted)' }}>{TEAM_ROSTER.find(m=>m.key===b.owner)?.name.split(' ')[0]}</div>
+              <div style={{ fontSize:11, fontWeight:700, color:'var(--red)' }}>{hrs}h</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* --- Experiments Tab --- */
+function ExperimentsTab({ experiments, reload, showToast }) {
+  function setResult(id, result) {
+    Store.update('experiments', id, { status:'complete', result });
+    showToast('Experiment marked: ' + result, 'success');
+    reload();
+  }
+  function addExperiment(hyp, platform, owner, due) {
+    Store.push('experiments', { hypothesis:hyp, platform, owner, due_date:due, status:'running', result:null, notes:'' });
+    showToast('Experiment added', 'success');
+    reload();
+  }
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ hypothesis:'', platform:'instagram', owner:'keaton', due_date:'' });
+
+  const resultColors = { win:'var(--green)', loss:'var(--red)', inconclusive:'var(--amber)' };
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:13, color:'var(--white)' }}>A/B Experiments</div>
+        <button onClick={() => setShowAdd(!showAdd)} style={{ fontSize:10, fontWeight:600, color:'var(--blue)', background:'none', border:'none', cursor:'pointer' }}>
+          {showAdd ? 'Cancel' : '+ New Experiment'}
+        </button>
+      </div>
+      {showAdd && (
+        <div style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:12, marginBottom:12 }}>
+          <input placeholder="Hypothesis" value={form.hypothesis} onChange={e=>setForm({...form,hypothesis:e.target.value})}
+            style={{ width:'100%', marginBottom:8, padding:'6px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11 }} />
+          <div style={{ display:'flex', gap:8, marginBottom:8 }}>
+            <select value={form.platform} onChange={e=>setForm({...form,platform:e.target.value})}
+              style={{ flex:1, padding:'6px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11 }}>
+              {Object.keys(platformLabels).map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <select value={form.owner} onChange={e=>setForm({...form,owner:e.target.value})}
+              style={{ flex:1, padding:'6px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11 }}>
+              {TEAM_ROSTER.map(m => <option key={m.key} value={m.key}>{m.name}</option>)}
+            </select>
+            <input type="date" value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})}
+              style={{ padding:'6px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11 }} />
+          </div>
+          <button onClick={() => { if (!form.hypothesis) return; addExperiment(form.hypothesis, form.platform, form.owner, form.due_date||new Date().toISOString()); setForm({hypothesis:'',platform:'instagram',owner:'keaton',due_date:''}); setShowAdd(false); }}
+            style={{ background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'6px 14px', fontSize:11, fontWeight:700, cursor:'pointer' }}>Add Experiment</button>
+        </div>
+      )}
+      {experiments.map(ex => (
+        <div key={ex.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid rgba(71,130,211,0.06)' }}>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:12, fontWeight:600, color:'var(--white)' }}>{ex.hypothesis}</div>
+            <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>{ex.platform} · {TEAM_ROSTER.find(m=>m.key===ex.owner)?.name || ex.owner} · Due {new Date(ex.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
+          </div>
+          {ex.result ? (
+            <span style={{ fontSize:10, fontWeight:700, color:resultColors[ex.result]||'var(--muted)', textTransform:'uppercase' }}>{ex.result}</span>
+          ) : (
+            <div style={{ display:'flex', gap:4 }}>
+              {['win','loss','inconclusive'].map(r => (
+                <button key={r} onClick={() => setResult(ex.id, r)}
+                  style={{ fontSize:9, padding:'3px 6px', borderRadius:3, border:'1px solid rgba(71,130,211,0.2)', background:'rgba(71,130,211,0.06)', color:'var(--muted-light)', cursor:'pointer' }}>{r}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      {experiments.length === 0 && <div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', padding:20 }}>No experiments yet.</div>}
+    </div>
+  );
+}
+
+/* --- Deliverables Tab --- */
+function DeliverablesTab({ deliverables, reload, showToast }) {
+  function updateStatus(id, status) {
+    Store.update('deliverables', id, { status });
+    showToast('Deliverable updated', 'success');
+    reload();
+  }
+  function addDeliverable(title, type, owner, due) {
+    Store.push('deliverables', { title, type, owner, due_date:due, status:'not_started' });
+    showToast('Deliverable added', 'success');
+    reload();
+  }
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ title:'', type:'event', owner:'casey', due_date:'' });
+
+  const statusColors = { not_started:'var(--muted)', in_progress:'var(--amber)', complete:'var(--green)', overdue:'var(--red)' };
+  const statusLabels = { not_started:'Not Started', in_progress:'In Progress', complete:'Complete', overdue:'Overdue' };
+  const statusCycle = ['not_started','in_progress','complete'];
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:13, color:'var(--white)' }}>Deliverables</div>
+        <button onClick={() => setShowAdd(!showAdd)} style={{ fontSize:10, fontWeight:600, color:'var(--blue)', background:'none', border:'none', cursor:'pointer' }}>
+          {showAdd ? 'Cancel' : '+ New Deliverable'}
+        </button>
+      </div>
+      {showAdd && (
+        <div style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:12, marginBottom:12 }}>
+          <input placeholder="Deliverable title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}
+            style={{ width:'100%', marginBottom:8, padding:'6px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11 }} />
+          <div style={{ display:'flex', gap:8, marginBottom:8 }}>
+            <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}
+              style={{ flex:1, padding:'6px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11 }}>
+              <option value="sponsor">Sponsor</option><option value="event">Event</option><option value="partner">Partner</option>
+            </select>
+            <select value={form.owner} onChange={e=>setForm({...form,owner:e.target.value})}
+              style={{ flex:1, padding:'6px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11 }}>
+              {TEAM_ROSTER.map(m => <option key={m.key} value={m.key}>{m.name}</option>)}
+            </select>
+            <input type="date" value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})}
+              style={{ padding:'6px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11 }} />
+          </div>
+          <button onClick={() => { if (!form.title) return; addDeliverable(form.title, form.type, form.owner, form.due_date||new Date().toISOString()); setForm({title:'',type:'event',owner:'casey',due_date:''}); setShowAdd(false); }}
+            style={{ background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'6px 14px', fontSize:11, fontWeight:700, cursor:'pointer' }}>Add Deliverable</button>
+        </div>
+      )}
+      {deliverables.map(d => {
+        const overdue = d.status !== 'complete' && new Date(d.due_date) < new Date();
+        const displayStatus = overdue ? 'overdue' : d.status;
+        return (
+          <div key={d.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 0', borderBottom:'1px solid rgba(71,130,211,0.06)' }}>
+            <span style={{ fontSize:9, fontWeight:700, background:'rgba(71,130,211,0.1)', color:'var(--blue)', borderRadius:3, padding:'2px 6px', textTransform:'uppercase' }}>{d.type}</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:12, fontWeight:600, color:'var(--white)' }}>{d.title}</div>
+              <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>{TEAM_ROSTER.find(m=>m.key===d.owner)?.name || d.owner} · Due {new Date(d.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
+            </div>
+            <button onClick={() => { const idx = statusCycle.indexOf(d.status); const next = statusCycle[(idx+1)%statusCycle.length]; updateStatus(d.id, next); }}
+              style={{ fontSize:9, fontWeight:600, color:statusColors[displayStatus], background:'none', border:'1px solid rgba(71,130,211,0.2)', borderRadius:3, padding:'3px 8px', cursor:'pointer' }}>
+              {statusLabels[displayStatus]}
+            </button>
+          </div>
+        );
+      })}
+      {deliverables.length === 0 && <div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', padding:20 }}>No deliverables tracked yet.</div>}
+    </div>
+  );
+}
+
+/* --- Brief Drawer (Expanded Card) --- */
+function BriefDrawer({ brief, onClose, onAdvance, onToggleGate, onDelete, onSaveTinyUrl, platformColors, platformLabels, gateCount, briefAge, reload }) {
+  const [tinyInput, setTinyInput] = useState(brief.tinyurl || '');
+  const gc = gateCount(brief);
+  const rule = STATUS_ADVANCE_RULES[brief.status];
+  const labelStyle = { fontSize:10, color:'var(--muted)', fontWeight:600, marginBottom:2, textTransform:'uppercase' };
+  const valStyle = { fontSize:12, color:'var(--white)', marginBottom:10 };
+  const cardStyle = { background:'rgba(71,130,211,0.04)', borderRadius:4, padding:10 };
+
+  return (
+    <div style={{ position:'fixed', top:0, right:0, width:400, height:'100vh', background:'var(--navy-deep)', borderLeft:'1px solid rgba(71,130,211,0.15)', zIndex:1000, overflowY:'auto', padding:20 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:16, color:'var(--white)' }}>Brief Detail</div>
+        <button onClick={onClose} style={{ background:'none', border:'none', color:'var(--muted)', fontSize:18, cursor:'pointer' }}>×</button>
+      </div>
+
+      {/* Aircraft */}
+      <div style={cardStyle}>
+        <div style={{ fontSize:14, fontWeight:700, color:'var(--white)', marginBottom:4 }}>{brief.aircraft_year} {brief.aircraft_make} {brief.aircraft_model}</div>
+        <div style={{ fontSize:11, color:'var(--muted)' }}>TT: {brief.total_time || '—'} · {brief.price ? '$' + brief.price.toLocaleString() : 'Call For Price'} · {brief.location}</div>
+        <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>Presented by: {brief.broker_name} {brief.broker_handle ? '(' + brief.broker_handle + ')' : ''}</div>
+      </div>
+
+      {/* Status + Lane */}
+      <div style={{ display:'flex', gap:8, margin:'12px 0' }}>
+        <span style={{ fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:3, background:'rgba(71,130,211,0.15)', color:'var(--blue)', textTransform:'uppercase' }}>{brief.status.replace(/_/g,' ')}</span>
+        {brief.approval_lane === 'yellow' && <span style={{ fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:3, background:'var(--amber)', color:'var(--navy)' }}>YELLOW LANE</span>}
+        <span style={{ fontSize:10, color:'var(--muted)' }}>Age: {briefAge(brief)}d</span>
+      </div>
+
+      {/* Platforms */}
+      <div style={{ marginBottom:12 }}>
+        <div style={labelStyle}>Platforms</div>
+        <div style={{ display:'flex', gap:4 }}>
+          {(brief.platforms||[]).map(p => (
+            <span key={p} style={{ fontSize:10, fontWeight:700, background:platformColors[p], color:'#fff', borderRadius:3, padding:'2px 8px' }}>{platformLabels[p]}</span>
+          ))}
+        </div>
+      </div>
+
+      {/* UTM strings */}
+      {brief.utm_string && (
+        <div style={{ marginBottom:12 }}>
+          <div style={labelStyle}>UTM Strings</div>
+          {typeof brief.utm_string === 'object' ? Object.entries(brief.utm_string).map(([pl, utm]) => (
+            <div key={pl} style={{ fontSize:10, fontFamily:'monospace', background:'var(--navy)', color:'var(--green)', padding:'4px 8px', borderRadius:4, marginBottom:4, wordBreak:'break-all' }}>
+              <span style={{ color:'var(--muted)', marginRight:4 }}>{platformLabels[pl]}:</span>{utm}
+            </div>
+          )) : <div style={{ fontSize:10, fontFamily:'monospace', background:'var(--navy)', color:'var(--green)', padding:'4px 8px', borderRadius:4, wordBreak:'break-all' }}>{brief.utm_string}</div>}
+        </div>
+      )}
+
+      {/* TinyURL */}
+      <div style={{ marginBottom:12 }}>
+        <div style={labelStyle}>TinyURL</div>
+        <div style={{ display:'flex', gap:6 }}>
+          <input value={tinyInput} onChange={e => setTinyInput(e.target.value)} placeholder="Paste TinyURL here"
+            style={{ flex:1, padding:'5px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11 }} />
+          <button onClick={() => onSaveTinyUrl(brief.id, tinyInput)}
+            style={{ fontSize:10, fontWeight:600, color:'var(--green)', background:'rgba(151,203,0,0.1)', border:'none', borderRadius:4, padding:'5px 10px', cursor:'pointer' }}>Save</button>
+        </div>
+      </div>
+
+      {/* Readiness Gates */}
+      <div style={{ marginBottom:12 }}>
+        <div style={labelStyle}>Readiness Gates ({gc.done}/{gc.total})</div>
+        <div style={cardStyle}>
+          {Object.entries(READINESS_GATE_LABELS).map(([key, label]) => {
+            const checked = brief.readiness_gates?.[key] || false;
+            return (
+              <label key={key} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0', cursor:'pointer', fontSize:11, color: checked ? 'var(--green)' : 'var(--muted-light)' }}>
+                <input type="checkbox" checked={checked} onChange={() => onToggleGate(brief.id, key)} style={{ accentColor:'var(--green)' }} />
+                {label}
+              </label>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* YELLOW lane review */}
+      {brief.approval_lane === 'yellow' && (
+        <div style={{ marginBottom:12 }}>
+          <label style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'rgba(245,158,11,0.1)', borderRadius:4, cursor:'pointer', fontSize:11, color:'var(--amber)' }}>
+            <input type="checkbox" checked={brief.reviewed_by_casey || false}
+              onChange={() => { Store.update('brief_log', brief.id, { reviewed_by_casey: !brief.reviewed_by_casey }); reload(); }}
+              style={{ accentColor:'var(--amber)' }} />
+            Casey has reviewed (YELLOW lane)
+          </label>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div style={{ display:'flex', gap:8, marginTop:16 }}>
+        {rule && (
+          <button onClick={() => onAdvance(brief)}
+            style={{ flex:1, background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'8px 14px', fontSize:11, fontWeight:700, fontFamily:'var(--font-display)', cursor:'pointer' }}>
+            Move to {KANBAN_COLUMNS.find(c=>c.id===rule.next)?.label || rule.next}
+          </button>
+        )}
+        {brief.status !== 'published' && (
+          <button onClick={() => onDelete(brief.id)}
+            style={{ padding:'8px 14px', background:'rgba(232,80,58,0.1)', color:'var(--red)', border:'none', borderRadius:4, fontSize:11, fontWeight:600, cursor:'pointer' }}>
+            Delete
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* --- New Brief Modal --- */
+function NewBriefModal({ onClose, reload, showToast }) {
+  const [form, setForm] = useState({
+    year:'', make:'', model:'', total_time:'', price:'', location:'',
+    broker_name:'', broker_handle:'', platforms:[], content_type:'listing',
+    utm_campaign:'', highlight_specs:'', op_cost:false
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const utmPresets = Store.get('utm_presets') || [];
+  const [showNewCampaign, setShowNewCampaign] = useState(false);
+  const [newCamp, setNewCamp] = useState({ name:'', id:'' });
+
+  function togglePlatform(p) {
+    setForm(f => ({ ...f, platforms: f.platforms.includes(p) ? f.platforms.filter(x=>x!==p) : [...f.platforms, p] }));
+  }
+
+  function modelSlug() {
+    const m = (form.make + '_' + form.model).toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g,'_');
+    return m;
+  }
+
+  function utmStrings() {
+    if (!form.utm_campaign || form.platforms.length === 0) return {};
+    const slug = modelSlug();
+    const result = {};
+    form.platforms.forEach(p => { result[p] = 'utm_source=' + p + '&utm_medium=social&utm_campaign=' + form.utm_campaign + '&utm_content=' + slug; });
+    return result;
+  }
+
+  function addCampaign() {
+    if (!newCamp.name || !newCamp.id) return;
+    const slug = newCamp.id.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const presets = Store.get('utm_presets') || [];
+    presets.push({ id: generateId(), name: newCamp.name, utm_campaign: slug, active: true, created_date: new Date().toISOString() });
+    Store.set('utm_presets', presets);
+    logEvent('utm_campaign_created', { campaign_id: slug, campaign_name: newCamp.name });
+    setForm(f => ({ ...f, utm_campaign: slug }));
+    setNewCamp({ name:'', id:'' });
+    setShowNewCampaign(false);
+    showToast('Campaign added', 'success');
+  }
+
+  async function generate() {
+    if (!form.year || !form.make || !form.model || !form.broker_name || form.platforms.length === 0) {
+      setError('Fill all required fields: Year, Make, Model, Broker Name, and at least 1 platform.');
+      return;
+    }
+    const isYellow = YELLOW_LANE_TYPES.includes(form.content_type);
+    const utms = utmStrings();
+    const brief = {
+      id: generateId(),
+      aircraft_year: form.year, aircraft_make: form.make, aircraft_model: form.model,
+      total_time: form.total_time ? parseInt(form.total_time) : null,
+      price: form.price ? parseInt(form.price) : null,
+      location: form.location, broker_name: form.broker_name, broker_handle: form.broker_handle,
+      platforms: form.platforms, content_type: form.content_type,
+      content_bucket: form.content_type === 'listing' ? 'Listing' : 'Pilot-Direct',
+      funnel_stage: form.content_type === 'listing' ? 'Intent' : 'Awareness',
+      utm_string: utms, destination_url: '', tinyurl: null,
+      created_date: new Date().toISOString(), status: 'backlog',
+      approval_lane: isYellow ? 'yellow' : 'green', owner: 'keaton',
+      readiness_gates: {
+        copy_approved: false, image_selected: false,
+        utm_created: Object.keys(utms).length > 0, tinyurl_generated: false,
+        canva_linked: false, publish_time_locked: false,
+        platform_confirmed: true, broker_tag_confirmed: false
+      },
+      info_gate_cleared: true, reviewed_by_casey: false, drive_brief_url: null
+    };
+
+    // If Apps Script URL is set, call it
+    if (BRIEF_GENERATOR_URL) {
+      setLoading(true);
+      setError('');
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+        const resp = await fetch(BRIEF_GENERATOR_URL, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...form, generated_by: 'hub_v1' }),
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        const data = await resp.json();
+        if (data.success) {
+          brief.drive_brief_url = data.drive_url;
+          brief.copy = data.brief_html;
+        } else {
+          setError(data.error || 'Brief generation failed.');
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        setError('Brief generation failed. Check your connection and try again. Or use the direct Brief Generator link below.');
+        logEvent('brief_generation_failed', { error_type: e.name === 'AbortError' ? 'timeout' : 'network' });
+        setLoading(false);
+        return;
+      }
+      setLoading(false);
+    }
+
+    Store.push('brief_log', brief);
+    Store.logActivity('brief_created', form.make + ' ' + form.model + ' (' + form.platforms.join(',') + ')');
+    logEvent('brief_generated', { brief_id: brief.id, platform_count: form.platforms.length, content_type: form.content_type, aircraft_make: form.make, utms_generated: Object.keys(utms).length });
+    showToast('Brief created and added to Backlog', 'success');
+    reload();
+    onClose();
+  }
+
+  const inputStyle = { width:'100%', padding:'6px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11, fontFamily:'var(--font-body)' };
+  const labelStyle = { fontSize:10, color:'var(--muted)', fontWeight:600, marginBottom:2, display:'block' };
+  const isYellow = YELLOW_LANE_TYPES.includes(form.content_type);
+
+  return (
+    <div style={{ position:'fixed', top:0, left:0, width:'100vw', height:'100vh', background:'rgba(0,0,0,0.6)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background:'var(--navy-light)', borderRadius:8, padding:24, width:560, maxHeight:'90vh', overflowY:'auto' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:18, color:'var(--white)', marginBottom:16 }}>New Brief</div>
+
+        {/* Aircraft fields */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:10 }}>
+          <div><label style={labelStyle}>Year *</label><input value={form.year} onChange={e=>setForm({...form,year:e.target.value})} style={inputStyle} /></div>
+          <div><label style={labelStyle}>Make *</label><input value={form.make} onChange={e=>setForm({...form,make:e.target.value})} style={inputStyle} /></div>
+          <div><label style={labelStyle}>Model *</label><input value={form.model} onChange={e=>setForm({...form,model:e.target.value})} style={inputStyle} /></div>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:10 }}>
+          <div><label style={labelStyle}>Total Time</label><input type="number" value={form.total_time} onChange={e=>setForm({...form,total_time:e.target.value})} style={inputStyle} /></div>
+          <div><label style={labelStyle}>Price</label><input type="number" value={form.price} onChange={e=>setForm({...form,price:e.target.value})} placeholder="Leave blank = Call For Price" style={inputStyle} /></div>
+          <div><label style={labelStyle}>Location</label><input value={form.location} onChange={e=>setForm({...form,location:e.target.value})} style={inputStyle} /></div>
+        </div>
+
+        {/* Broker */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+          <div><label style={labelStyle}>Broker Name *</label><input value={form.broker_name} onChange={e=>setForm({...form,broker_name:e.target.value})} style={inputStyle} /></div>
+          <div><label style={labelStyle}>Broker Social Handle</label><input value={form.broker_handle} onChange={e=>setForm({...form,broker_handle:e.target.value})} placeholder="@handle" style={inputStyle} /></div>
+        </div>
+
+        {/* Platforms */}
+        <div style={{ marginBottom:10 }}>
+          <label style={labelStyle}>Platforms *</label>
+          <div style={{ display:'flex', gap:6 }}>
+            {['linkedin','facebook','instagram','x','tiktok'].map(p => (
+              <button key={p} onClick={() => togglePlatform(p)}
+                style={{ fontSize:10, fontWeight:700, padding:'4px 10px', borderRadius:3, cursor:'pointer', border: form.platforms.includes(p) ? '2px solid var(--green)' : '1px solid rgba(71,130,211,0.2)',
+                  background: form.platforms.includes(p) ? 'rgba(151,203,0,0.15)' : 'rgba(71,130,211,0.06)', color: form.platforms.includes(p) ? 'var(--green)' : 'var(--muted)' }}>
+                {platformLabels[p]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content Type */}
+        <div style={{ marginBottom:10 }}>
+          <label style={labelStyle}>Content Type</label>
+          <select value={form.content_type} onChange={e=>setForm({...form,content_type:e.target.value})} style={inputStyle}>
+            {CONTENT_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g,' ')}</option>)}
+          </select>
+          {isYellow && (
+            <div style={{ fontSize:10, color:'var(--amber)', marginTop:4, padding:'4px 8px', background:'rgba(245,158,11,0.08)', borderRadius:4 }}>
+              This content type requires Casey's review (YELLOW lane). Brief will be flagged.
+            </div>
+          )}
+        </div>
+
+        {/* UTM Campaign */}
+        <div style={{ marginBottom:10 }}>
+          <label style={labelStyle}>UTM Campaign</label>
+          <div style={{ display:'flex', gap:6 }}>
+            <select value={form.utm_campaign} onChange={e=>setForm({...form,utm_campaign:e.target.value})} style={{ ...inputStyle, flex:1 }}>
+              <option value="">Select campaign...</option>
+              {utmPresets.map(p => <option key={p.id} value={p.utm_campaign}>{p.name}</option>)}
+            </select>
+            <button onClick={() => setShowNewCampaign(!showNewCampaign)}
+              style={{ fontSize:10, fontWeight:600, color:'var(--blue)', background:'none', border:'none', cursor:'pointer', whiteSpace:'nowrap' }}>+ New</button>
+          </div>
+          {showNewCampaign && (
+            <div style={{ display:'flex', gap:6, marginTop:6 }}>
+              <input placeholder="Campaign Name" value={newCamp.name} onChange={e=>setNewCamp({...newCamp,name:e.target.value})} style={{ ...inputStyle, flex:1 }} />
+              <input placeholder="campaign-slug" value={newCamp.id} onChange={e=>setNewCamp({...newCamp,id:e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')})} style={{ ...inputStyle, flex:1 }} />
+              <button onClick={addCampaign} style={{ fontSize:10, fontWeight:600, color:'var(--green)', background:'rgba(151,203,0,0.1)', border:'none', borderRadius:4, padding:'4px 10px', cursor:'pointer' }}>Add</button>
+            </div>
+          )}
+          {!form.utm_campaign && utmPresets.length === 0 && (
+            <div style={{ fontSize:10, color:'var(--amber)', marginTop:4 }}>No UTM campaigns configured. Add one above or in Library {'>'} UTM/Links.</div>
+          )}
+        </div>
+
+        {/* UTM preview */}
+        {form.platforms.length > 0 && form.utm_campaign && (
+          <div style={{ marginBottom:10 }}>
+            <label style={labelStyle}>UTM Strings (auto-generated)</label>
+            {Object.entries(utmStrings()).map(([pl, utm]) => (
+              <div key={pl} style={{ fontSize:10, fontFamily:'monospace', background:'var(--navy)', color:'var(--green)', padding:'4px 8px', borderRadius:4, marginBottom:3, wordBreak:'break-all' }}>
+                <span style={{ color:'var(--muted)', marginRight:4 }}>{platformLabels[pl]}:</span>{utm}
+              </div>
+            ))}
+            <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>utm_content: {modelSlug()}</div>
+          </div>
+        )}
+
+        {/* Highlight specs */}
+        <div style={{ marginBottom:10 }}>
+          <label style={labelStyle}>Highlight Specs</label>
+          <textarea rows={3} value={form.highlight_specs} onChange={e=>setForm({...form,highlight_specs:e.target.value})} placeholder="3 key features (optional)" style={{ ...inputStyle, resize:'vertical' }} />
+        </div>
+
+        {/* Op-cost toggle */}
+        <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16, cursor:'pointer', fontSize:11, color:'var(--muted-light)' }}>
+          <input type="checkbox" checked={form.op_cost} onChange={e=>setForm({...form,op_cost:e.target.checked})} style={{ accentColor:'var(--green)' }} />
+          Include operating cost download CTA
+        </label>
+
+        {/* Error */}
+        {error && <div style={{ fontSize:11, color:'#ff9080', borderLeft:'3px solid var(--red)', padding:'6px 10px', marginBottom:12, background:'rgba(232,80,58,0.06)', borderRadius:'0 4px 4px 0' }}>{error}</div>}
+
+        {/* Submit */}
+        <button onClick={generate} disabled={loading}
+          style={{ width:'100%', background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'10px', fontSize:14, fontWeight:700, fontFamily:'var(--font-display)', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+          {loading ? 'Generating...' : 'Generate Brief'}
+        </button>
+
+        {BRIEF_GENERATOR_URL && (
+          <a href={BRIEF_GENERATOR_URL} target="_blank" rel="noopener" style={{ display:'block', textAlign:'center', marginTop:8, fontSize:11, color:'var(--blue)' }}>
+            Direct Brief Generator (fallback)
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* --- New Task Modal --- */
+function NewTaskModal({ onClose, reload, showToast }) {
+  const [form, setForm] = useState({ title:'', tier:'T2', tags:'', owner:'keaton', due_date:'', priority:'P1' });
+
+  function submit() {
+    if (!form.title || !form.tier) return;
+    const tags = form.tags.split(',').map(t => t.trim()).filter(Boolean).map(t => t.startsWith('#') ? t.replace(/\s+/g,'-') : '#' + t.replace(/\s+/g,'-'));
+    const task = {
+      title: form.title, tier: form.tier, tags, owner: form.owner,
+      due_date: form.due_date || new Date().toISOString(), status: 'active',
+      priority: form.priority, created_date: new Date().toISOString()
+    };
+    Store.push('tasks', task);
+    logEvent('task_created', { tier: form.tier, owner: form.owner, priority: form.priority });
+    Store.logActivity('task_created', form.title);
+
+    // mailto
+    const email = TEAM_EMAILS[form.owner];
+    if (email) {
+      const subj = encodeURIComponent('Action assigned: ' + form.title.slice(0,50));
+      const body = encodeURIComponent('Due: ' + (form.due_date || 'ASAP'));
+      window.open('mailto:' + email + '?subject=' + subj + '&body=' + body, '_blank');
+    }
+    showToast('Task created', 'success');
+    reload();
+    onClose();
+  }
+
+  const inputStyle = { width:'100%', padding:'6px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11, fontFamily:'var(--font-body)' };
+  const labelStyle = { fontSize:10, color:'var(--muted)', fontWeight:600, marginBottom:2, display:'block' };
+
+  return (
+    <div style={{ position:'fixed', top:0, left:0, width:'100vw', height:'100vh', background:'rgba(0,0,0,0.6)', zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background:'var(--navy-light)', borderRadius:8, padding:24, width:440, maxHeight:'90vh', overflowY:'auto' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:18, color:'var(--white)', marginBottom:16 }}>New Task</div>
+
+        <div style={{ marginBottom:10 }}><label style={labelStyle}>Title *</label><input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} style={inputStyle} /></div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+          <div>
+            <label style={labelStyle}>Tier *</label>
+            <div style={{ display:'flex', gap:4 }}>
+              {['T1','T2','T3'].map(t => (
+                <button key={t} onClick={() => setForm({...form,tier:t})}
+                  style={{ flex:1, fontSize:11, fontWeight:700, padding:'5px 0', borderRadius:3, cursor:'pointer',
+                    border: form.tier===t ? '2px solid var(--green)' : '1px solid rgba(71,130,211,0.2)',
+                    background: form.tier===t ? 'rgba(151,203,0,0.15)' : 'rgba(71,130,211,0.06)',
+                    color: form.tier===t ? 'var(--green)' : 'var(--muted)' }}>{t}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label style={labelStyle}>Priority</label>
+            <select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})} style={inputStyle}>
+              <option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ marginBottom:10 }}><label style={labelStyle}>Tags (comma-separated)</label><input value={form.tags} onChange={e=>setForm({...form,tags:e.target.value})} placeholder="#event, #nbaa" style={inputStyle} /></div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:16 }}>
+          <div>
+            <label style={labelStyle}>Owner</label>
+            <select value={form.owner} onChange={e=>setForm({...form,owner:e.target.value})} style={inputStyle}>
+              {TEAM_ROSTER.map(m => <option key={m.key} value={m.key}>{m.name}</option>)}
+            </select>
+          </div>
+          <div><label style={labelStyle}>Due Date</label><input type="date" value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})} style={inputStyle} /></div>
+        </div>
+
+        <button onClick={submit}
+          style={{ width:'100%', background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'10px', fontSize:14, fontWeight:700, fontFamily:'var(--font-display)', cursor:'pointer' }}>
+          Create Task
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   PLACEHOLDER VIEWS (Pages 4-6)
    ============================================================ */
 function PlaceholderView({ viewId }) {
   const meta = VIEWS.find(v => v.id === viewId);
   const descriptions = {
-    command: 'Dashboard — KPIs, Windsor data, integrity score, cadence grid, alerts.',
-    plan: 'Monthly content calendar with readiness gates, recurring post locks.',
-    produce: 'Kanban pipeline, brief creation, UTM builder, task board.',
     learn: 'Performance analytics — leaderboards, funnel, attribution health.',
     compete: 'Competitive intelligence — vulnerability scoring, model coverage.',
     library: 'Templates, copy bank, UTM presets, sponsor kits.',
@@ -2511,6 +3626,7 @@ function App() {
     switch (currentView) {
       case 'command':  return <CommandView />;
       case 'plan':     return <PlanView />;
+      case 'produce':  return <ProduceView />;
       case 'channel':  return <ChannelView />;
       case 'requests': return <RequestsView />;
       case 'settings': return <SettingsView />;
