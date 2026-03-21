@@ -317,6 +317,10 @@ const DEFAULT_STATE = {
   experiments: [],
   deliverables: [],
   utm_presets: [],
+  library_templates: [],
+  library_copy: [],
+  library_offers: [],
+  library_sponsor_kits: [],
   requests: [
     { id: 'seed-req-001', type: 'design_asset', title: 'NBAA SDC social countdown template', description: 'Need countdown template for NBAA SDC event social posts. 3-slide carousel format for Instagram + single image for LinkedIn/Facebook.', priority: 'P1', status: 'submitted', requestor: 'keaton', assignee: null, deadline: null, related_brief_id: null, created_date: '2026-03-18T10:00:00Z', updated_date: '2026-03-18T10:00:00Z', notes: '' },
     { id: 'seed-req-002', type: 'tech_dev', title: 'Add CallRail GTM tag to all 8 servers', description: 'CallRail tracking tag needs deployment across all 8 GlobalAir servers via GTM. Coordinate with Thomas Galla at BluegrassNet.', priority: 'P0', status: 'triaged', requestor: 'casey', assignee: 'casey', deadline: '2026-03-25T00:00:00Z', related_brief_id: null, created_date: '2026-03-15T09:00:00Z', updated_date: '2026-03-16T14:00:00Z', notes: 'Routed to dev sprint. Thomas confirmed GTM access on 6 of 8 servers.' },
@@ -3477,15 +3481,783 @@ function NewTaskModal({ onClose, reload, showToast }) {
 }
 
 /* ============================================================
-   PLACEHOLDER VIEWS (Pages 4-6)
+   LIBRARY VIEW (Page 6) — Templates, Copy Bank, UTM, Offers, Sponsors
+   ============================================================ */
+const LIBRARY_POST_TYPES = [
+  'listing_jet','listing_turboprop','listing_piston','listing_helicopter',
+  'pilot_direct_avgeek','pilot_direct_education','pilot_direct_humor',
+  'broker_facing_wanted','broker_facing_sold','broker_facing_summary',
+  'event_announcement','event_countdown','event_recap',
+  'authority_market','authority_resource','lead_magnet'
+];
+
+const BUYER_PERSONAS = ['serious_buyer','financial_buyer','pilot_buyer','broker_buyer'];
+
+const LIBRARY_SEED_TEMPLATES = [
+  { id:'tpl-001', name:'Format B — Listing (Single Image)', post_type:'listing_jet', platforms:['linkedin','facebook','instagram','x'], thumbnail_url:null, canva_edit_url:'', canva_design_id:null, last_used_date:null, use_count:0, status:'active', notes:'Primary listing format. Dark navy info panel.' },
+  { id:'tpl-002', name:'Carousel — 3 Slide Listing', post_type:'listing_turboprop', platforms:['instagram','facebook'], thumbnail_url:null, canva_edit_url:'', canva_design_id:null, last_used_date:null, use_count:0, status:'active', notes:'Exterior / interior / CTA.' },
+  { id:'tpl-003', name:'iOS Alert Card — Pilot Humor', post_type:'pilot_direct_humor', platforms:['facebook','instagram','x'], thumbnail_url:null, canva_edit_url:'', canva_design_id:null, last_used_date:null, use_count:0, status:'active', notes:'Deadpan aviation humor. Drives saves.' },
+  { id:'tpl-004', name:'Event Ticket Stub', post_type:'event_announcement', platforms:['linkedin','facebook','instagram','x'], thumbnail_url:null, canva_edit_url:'', canva_design_id:null, last_used_date:null, use_count:0, status:'active', notes:'One-way ticket format. AERO + NBAA.' },
+  { id:'tpl-005', name:'Broker WANTED Card', post_type:'broker_facing_wanted', platforms:['linkedin','facebook','instagram'], thumbnail_url:null, canva_edit_url:'', canva_design_id:null, last_used_date:null, use_count:0, status:'active', notes:'Buyer demand post for specific model.' },
+  { id:'tpl-006', name:'Resource Carousel — Pilot Reference', post_type:'pilot_direct_education', platforms:['instagram','facebook'], thumbnail_url:null, canva_edit_url:'', canva_design_id:null, last_used_date:null, use_count:0, status:'active', notes:'Drives saves. Educational aviation content.' }
+];
+
+const LIBRARY_SEED_COPY = [
+  { id:'copy-001', type:'hook', post_type:'listing_jet', platform:'all', text:'Your hangar deserves an upgrade. Here\'s one worth considering.', performance_tag:'proven', copy_count:0, created_date:'2026-03-15T09:00:00Z', status:'active' },
+  { id:'copy-002', type:'hook', post_type:'listing_piston', platform:'all', text:'Weekend flying just got a serious upgrade. Priced to move.', performance_tag:'proven', copy_count:0, created_date:'2026-03-15T09:00:00Z', status:'active' },
+  { id:'copy-003', type:'hook', post_type:'event_announcement', platform:'all', text:'We\'ll see you there. Booth details coming soon.', performance_tag:'testing', copy_count:0, created_date:'2026-03-16T10:00:00Z', status:'active' },
+  { id:'copy-004', type:'caption_rule', post_type:'all', platform:'linkedin', text:'No hashtags. No emojis. No exclamation marks. Institutional tone only. Dwell time and comments are the algorithm signal.', performance_tag:'proven', copy_count:0, created_date:'2026-03-10T09:00:00Z', status:'active' },
+  { id:'copy-005', type:'caption_rule', post_type:'all', platform:'instagram', text:'No links in caption. "Link in bio" only. 15-25 hashtags in first comment. 4 images minimum. Saves and carousel swipes are the algorithm signal.', performance_tag:'proven', copy_count:0, created_date:'2026-03-10T09:00:00Z', status:'active' },
+  { id:'copy-006', type:'caption_rule', post_type:'all', platform:'facebook', text:'No jets. Piston, turboprop, helicopter only. Emojis OK. Tag broker page. 2 images max. Comments + shares + saves are the algorithm signal.', performance_tag:'proven', copy_count:0, created_date:'2026-03-10T09:00:00Z', status:'active' },
+  { id:'copy-007', type:'cta', post_type:'all', platform:'all', text:'Download the full operating cost breakdown — link in bio.', performance_tag:'proven', copy_count:0, created_date:'2026-03-12T09:00:00Z', status:'active' },
+  { id:'copy-008', type:'cta', post_type:'listing_jet', platform:'linkedin', text:'Full specs and history available. Direct inquiries to the broker below.', performance_tag:'proven', copy_count:0, created_date:'2026-03-12T09:00:00Z', status:'active' },
+  { id:'copy-009', type:'cta', post_type:'all', platform:'all', text:'Browse 10,000+ aircraft listings — no account required. GlobalAir.com', performance_tag:'proven', copy_count:0, created_date:'2026-03-12T09:00:00Z', status:'active' }
+];
+
+const LIBRARY_SEED_OFFERS = [
+  { id:'offer-001', name:'Aircraft Operating Cost Calculator', type:'calculator', target_persona:'serious_buyer', landing_page_url:'https://globalair.com/tools/operating-cost', qi_count:0, status:'active', created_date:'2026-03-15T09:00:00Z' },
+  { id:'offer-002', name:'Piston Buyer\'s Checklist', type:'checklist', target_persona:'pilot_buyer', landing_page_url:'https://globalair.com/resources/piston-checklist', qi_count:0, status:'active', created_date:'2026-03-16T09:00:00Z' }
+];
+
+const LIBRARY_SEED_SPONSOR_KITS = [
+  { id:'aero-2026-kit', sponsor_name:'AERO Friedrichshafen 2026', package_tier:'custom', status:'active', overall_due_date:'2026-04-22T00:00:00Z', drive_folder_url:'', notes:'',
+    deliverables:[
+      { id:'d1', title:'Jet Spotlight landing page live', done:true, due_date:'2026-03-15T00:00:00Z' },
+      { id:'d2', title:'4 AERO teaser social posts published', done:false, due_date:'2026-04-01T00:00:00Z' },
+      { id:'d3', title:'Event calendar card designed', done:false, due_date:'2026-04-05T00:00:00Z' },
+      { id:'d4', title:'Booth number confirmed + published', done:false, due_date:'2026-04-10T00:00:00Z' },
+      { id:'d5', title:'Live event coverage plan confirmed', done:false, due_date:'2026-04-15T00:00:00Z' }
+    ]
+  }
+];
+
+function LibraryView() {
+  const nav = useNav();
+  const [subTab, setSubTab] = useState('templates');
+  const [templates, setTemplates] = useState([]);
+  const [copyBank, setCopyBank] = useState([]);
+  const [offers, setOffers] = useState([]);
+  const [sponsorKits, setSponsorKits] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState(null);
+  const [refresh, setRefresh] = useState(0);
+  const [platFilter, setPlatFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
+
+  useEffect(() => {
+    let tpl = Store.get('library_templates') || [];
+    if (tpl.length === 0) { tpl = LIBRARY_SEED_TEMPLATES; Store.set('library_templates', tpl); }
+    setTemplates(tpl.filter(t => t.status === 'active'));
+
+    let cp = Store.get('library_copy') || [];
+    if (cp.length === 0) { cp = LIBRARY_SEED_COPY; Store.set('library_copy', cp); }
+    setCopyBank(cp.filter(c => c.status === 'active'));
+
+    let of = Store.get('library_offers') || [];
+    if (of.length === 0) { of = LIBRARY_SEED_OFFERS; Store.set('library_offers', of); }
+    setOffers(of);
+
+    let sk = Store.get('library_sponsor_kits') || [];
+    if (sk.length === 0) { sk = LIBRARY_SEED_SPONSOR_KITS; Store.set('library_sponsor_kits', sk); }
+    setSponsorKits(sk);
+  }, [refresh]);
+
+  function reload() { setRefresh(r => r + 1); }
+
+  const platformLabels = { linkedin:'LI', facebook:'FB', instagram:'IG', x:'X', tiktok:'TT', youtube:'YT' };
+  const platformColors = { linkedin:'#0A66C2', facebook:'#7B68EE', instagram:'#E1306C', x:'#888', tiktok:'#69C9D0', youtube:'#FF0000' };
+  const tagColors = { proven:'var(--green)', testing:'var(--amber)', retired:'var(--muted)' };
+
+  // Global search
+  useEffect(() => {
+    if (searchQuery.length < 2) { setSearchResults(null); return; }
+    const q = searchQuery.toLowerCase();
+    const results = [];
+    templates.forEach(t => { if (t.name.toLowerCase().includes(q)) results.push({ ...t, source:'Templates', label:t.name }); });
+    copyBank.forEach(c => { if (c.text.toLowerCase().includes(q)) results.push({ ...c, source:'Copy/CTA', label:c.text.slice(0,80) }); });
+    const utms = Store.get('utm_presets') || [];
+    utms.forEach(u => { if ((u.name||'').toLowerCase().includes(q) || (u.utm_campaign||'').toLowerCase().includes(q)) results.push({ ...u, source:'UTM/Links', label:u.name }); });
+    offers.forEach(o => { if (o.name.toLowerCase().includes(q)) results.push({ ...o, source:'Offers', label:o.name }); });
+    sponsorKits.forEach(sk => { if (sk.sponsor_name.toLowerCase().includes(q)) results.push({ ...sk, source:'Sponsor Kits', label:sk.sponsor_name }); });
+    logEvent('library_search_performed', { query_length: searchQuery.length, result_count: results.length });
+    setSearchResults(results);
+  }, [searchQuery]);
+
+  function copyToClipboard(text, itemId) {
+    navigator.clipboard.writeText(text).catch(() => {
+      const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    });
+    if (itemId) {
+      const cp = Store.get('library_copy') || [];
+      const item = cp.find(c => c.id === itemId);
+      if (item) { item.copy_count = (item.copy_count || 0) + 1; Store.set('library_copy', cp); }
+    }
+  }
+
+  const tabs = [
+    { id:'templates', label:'Templates' }, { id:'copy', label:'Copy/CTA' }, { id:'utm', label:'UTM/Links' },
+    { id:'offers', label:'Offers' }, { id:'sponsors', label:'Sponsor Kits' }, { id:'pipeline', label:'Pipeline' }
+  ];
+  const tabStyle = (active) => ({ background:'none', border:'none', borderBottom: active ? '2px solid var(--green)' : '2px solid transparent', color: active ? 'var(--white)' : 'var(--muted)', fontSize:11, fontWeight:600, padding:'8px 14px', cursor:'pointer', fontFamily:'var(--font-body)', transition:'all 0.15s' });
+
+  return (
+    <div style={{ padding:'16px 20px', height:'100%', display:'flex', flexDirection:'column' }}>
+      {/* Header + Search */}
+      <div style={{ marginBottom:12 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:8 }}>
+          <div style={{ display:'flex', gap:0 }}>
+            {tabs.map(t => <button key={t.id} onClick={() => setSubTab(t.id)} style={tabStyle(subTab === t.id)}>{t.label}</button>)}
+          </div>
+          <div style={{ flex:1 }} />
+        </div>
+        <div style={{ position:'relative' }}>
+          <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') { setSearchQuery(''); setSearchResults(null); }}}
+            placeholder="Search all library assets..." style={{ width:'100%', padding:'8px 14px', borderRadius:6, border:'1px solid rgba(71,130,211,0.15)', background:'var(--navy-light)', color:'var(--white)', fontSize:12, fontFamily:'var(--font-body)' }} />
+          {searchResults && (
+            <div style={{ position:'absolute', top:'100%', left:0, right:0, background:'var(--navy-light)', border:'1px solid rgba(71,130,211,0.15)', borderRadius:'0 0 6px 6px', maxHeight:360, overflowY:'auto', zIndex:200 }}>
+              {searchResults.length === 0 && <div style={{ padding:14, fontSize:11, color:'var(--muted)' }}>No results for "{searchQuery}". Try a different term.</div>}
+              {searchResults.map((r, i) => (
+                <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 14px', borderBottom:'1px solid rgba(71,130,211,0.05)', cursor:'pointer' }}
+                  onClick={() => { const tabMap = { Templates:'templates', 'Copy/CTA':'copy', 'UTM/Links':'utm', Offers:'offers', 'Sponsor Kits':'sponsors' }; setSubTab(tabMap[r.source]||'templates'); setSearchQuery(''); setSearchResults(null); }}>
+                  <span style={{ fontSize:9, fontWeight:600, background:'rgba(71,130,211,0.1)', color:'var(--blue)', borderRadius:3, padding:'1px 6px' }}>{r.source}</span>
+                  <span style={{ flex:1, fontSize:11, color:'var(--muted-light)' }}>{r.label}</span>
+                  <span style={{ fontSize:10, color:'var(--blue)', fontWeight:600 }}>Go</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex:1, overflowY:'auto' }}>
+        {subTab === 'templates' && <LibTemplates templates={templates} platFilter={platFilter} setPlatFilter={setPlatFilter} typeFilter={typeFilter} setTypeFilter={setTypeFilter} platformLabels={platformLabels} platformColors={platformColors} reload={reload} showToast={nav.showToast} />}
+        {subTab === 'copy' && <LibCopy copyBank={copyBank} platformLabels={platformLabels} tagColors={tagColors} copyToClipboard={copyToClipboard} reload={reload} showToast={nav.showToast} />}
+        {subTab === 'utm' && <LibUTM platformLabels={platformLabels} reload={reload} showToast={nav.showToast} copyToClipboard={copyToClipboard} />}
+        {subTab === 'offers' && <LibOffers offers={offers} reload={reload} showToast={nav.showToast} nav={nav} />}
+        {subTab === 'sponsors' && <LibSponsors sponsorKits={sponsorKits} reload={reload} showToast={nav.showToast} />}
+        {subTab === 'pipeline' && <LibPipeline platformLabels={platformLabels} nav={nav} />}
+      </div>
+    </div>
+  );
+}
+
+/* --- Templates Sub-tab --- */
+function LibTemplates({ templates, platFilter, setPlatFilter, typeFilter, setTypeFilter, platformLabels, platformColors, reload, showToast }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ name:'', post_type:'listing_jet', platforms:[], thumbnail_url:'', canva_edit_url:'', notes:'' });
+
+  const filtered = templates.filter(t => {
+    if (platFilter !== 'all' && !(t.platforms||[]).includes(platFilter)) return false;
+    if (typeFilter !== 'all' && t.post_type !== typeFilter) return false;
+    return true;
+  }).sort((a,b) => (b.use_count||0) - (a.use_count||0));
+
+  function openInCanva(t) {
+    if (t.canva_edit_url) window.open(t.canva_edit_url, '_blank');
+    const all = Store.get('library_templates') || [];
+    const item = all.find(x => x.id === t.id);
+    if (item) { item.use_count = (item.use_count||0) + 1; item.last_used_date = new Date().toISOString(); Store.set('library_templates', all); }
+    logEvent('template_opened', { template_id: t.id, post_type: t.post_type, platform_count: (t.platforms||[]).length });
+    showToast('Opening in Canva...', 'info');
+    reload();
+  }
+
+  function addTemplate() {
+    if (!form.name) return;
+    const isCanva = !form.canva_edit_url || form.canva_edit_url.includes('canva.com');
+    Store.push('library_templates', { ...form, canva_design_id:null, last_used_date:null, use_count:0, status:'active' });
+    if (!isCanva && form.canva_edit_url) showToast('URL does not appear to be a Canva link. Verify before using.', 'error');
+    logEvent('template_added', { post_type: form.post_type });
+    showToast('Template added', 'success');
+    setShowAdd(false); setForm({ name:'', post_type:'listing_jet', platforms:[], thumbnail_url:'', canva_edit_url:'', notes:'' }); reload();
+  }
+
+  const inputStyle = { width:'100%', padding:'5px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11, fontFamily:'var(--font-body)' };
+
+  return (
+    <div>
+      {/* Filters */}
+      <div style={{ display:'flex', gap:8, marginBottom:12, alignItems:'center', flexWrap:'wrap' }}>
+        <div style={{ display:'flex', gap:3 }}>
+          {['all','linkedin','facebook','instagram','x','tiktok','youtube'].map(p => (
+            <button key={p} onClick={() => setPlatFilter(p)} style={{ fontSize:9, fontWeight:600, padding:'3px 8px', borderRadius:3, border: platFilter===p ? '2px solid var(--green)' : '1px solid rgba(71,130,211,0.2)', background: platFilter===p ? 'rgba(151,203,0,0.15)' : 'rgba(71,130,211,0.06)', color: platFilter===p ? 'var(--green)' : 'var(--muted)', cursor:'pointer' }}>
+              {p === 'all' ? 'All' : platformLabels[p]||p}
+            </button>
+          ))}
+        </div>
+        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ ...inputStyle, width:'auto', minWidth:140 }}>
+          <option value="all">All post types</option>
+          {LIBRARY_POST_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g,' ')}</option>)}
+        </select>
+        <div style={{ flex:1 }} />
+        <button onClick={() => setShowAdd(!showAdd)} style={{ fontSize:10, fontWeight:600, color:'var(--green)', background:'none', border:'none', cursor:'pointer' }}>{showAdd ? 'Cancel' : '+ Add Template'}</button>
+      </div>
+
+      {/* Add form */}
+      {showAdd && (
+        <div style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:12, marginBottom:12 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
+            <div><label style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>Template Name *</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} style={inputStyle} /></div>
+            <div><label style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>Post Type</label>
+              <select value={form.post_type} onChange={e=>setForm({...form,post_type:e.target.value})} style={inputStyle}>
+                {LIBRARY_POST_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g,' ')}</option>)}
+              </select></div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
+            <div><label style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>Canva Edit URL</label><input value={form.canva_edit_url} onChange={e=>setForm({...form,canva_edit_url:e.target.value})} style={inputStyle} /></div>
+            <div><label style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>Thumbnail URL</label><input value={form.thumbnail_url} onChange={e=>setForm({...form,thumbnail_url:e.target.value})} style={inputStyle} /></div>
+          </div>
+          <button onClick={addTemplate} style={{ background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'6px 14px', fontSize:11, fontWeight:700, cursor:'pointer' }}>Save Template</button>
+        </div>
+      )}
+
+      {/* Grid */}
+      {filtered.length === 0 && <div style={{ textAlign:'center', padding:30, fontSize:11, color:'var(--muted)' }}>No templates match the current filters. Clear filters or add a new template.</div>}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:12 }}>
+        {filtered.map(t => (
+          <div key={t.id} style={{ background:'var(--navy-light)', border:'1px solid rgba(71,130,211,0.1)', borderRadius:8, overflow:'hidden' }}>
+            <div style={{ width:'100%', height:120, background:'var(--navy-deep)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              {t.thumbnail_url ? <img src={t.thumbnail_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} alt={t.name} /> :
+                <span style={{ fontSize:12, color:'var(--muted)', fontWeight:600 }}>{t.name.slice(0,20)}</span>}
+            </div>
+            <div style={{ padding:10 }}>
+              <div style={{ fontSize:13, fontWeight:600, color:'var(--white)', marginBottom:4, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' }}>{t.name}</div>
+              <div style={{ display:'flex', gap:3, marginBottom:4, flexWrap:'wrap' }}>
+                <span style={{ fontSize:9, fontWeight:600, background:'rgba(71,130,211,0.15)', color:'var(--blue)', borderRadius:3, padding:'1px 5px' }}>{(t.post_type||'').replace(/_/g,' ')}</span>
+                {(t.platforms||[]).map(p => <span key={p} style={{ fontSize:8, background:'rgba(71,130,211,0.06)', color:'var(--muted)', borderRadius:3, padding:'1px 4px' }}>{platformLabels[p]}</span>)}
+              </div>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:'var(--muted)', marginBottom:6 }}>
+                <span>{t.use_count||0} uses</span>
+                <span>{t.last_used_date ? new Date(t.last_used_date).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : 'Never used'}</span>
+              </div>
+              <button onClick={() => openInCanva(t)} style={{ width:'100%', background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'5px 0', fontSize:11, fontWeight:700, fontFamily:'var(--font-body)', cursor:'pointer' }}>
+                Open in Canva
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* --- Copy/CTA Sub-tab --- */
+function LibCopy({ copyBank, platformLabels, tagColors, copyToClipboard, reload, showToast }) {
+  const [copiedId, setCopiedId] = useState(null);
+  const [showAdd, setShowAdd] = useState(null); // null or 'hook'|'caption_rule'|'cta'
+  const [form, setForm] = useState({ type:'hook', post_type:'listing_jet', platform:'all', text:'', performance_tag:'testing' });
+
+  function handleCopy(item) {
+    copyToClipboard(item.text, item.id);
+    setCopiedId(item.id);
+    logEvent('copy_item_copied', { item_id: item.id, item_type: item.type, post_type: item.post_type, platform: item.platform });
+    setTimeout(() => setCopiedId(null), 1500);
+    reload();
+  }
+
+  function addEntry() {
+    if (!form.text) return;
+    Store.push('library_copy', { ...form, copy_count:0, created_date:new Date().toISOString(), status:'active' });
+    logEvent('copy_item_added', { item_type: form.type });
+    showToast('Entry added', 'success');
+    setShowAdd(null); setForm({ type:'hook', post_type:'listing_jet', platform:'all', text:'', performance_tag:'testing' }); reload();
+  }
+
+  const hooks = copyBank.filter(c => c.type === 'hook').sort((a,b) => (a.performance_tag==='proven'?0:1) - (b.performance_tag==='proven'?0:1));
+  const rules = copyBank.filter(c => c.type === 'caption_rule');
+  const ctas = copyBank.filter(c => c.type === 'cta').sort((a,b) => (b.copy_count||0) - (a.copy_count||0));
+
+  const inputStyle = { width:'100%', padding:'5px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11, fontFamily:'var(--font-body)' };
+
+  function renderAddForm(type) {
+    if (showAdd !== type) return null;
+    return (
+      <div style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:12, marginBottom:8 }}>
+        <textarea rows={2} value={form.text} onChange={e=>setForm({...form,text:e.target.value,type})} placeholder="Enter text..." style={{ ...inputStyle, resize:'vertical', marginBottom:6 }} />
+        <div style={{ display:'flex', gap:6 }}>
+          {type === 'hook' && <select value={form.post_type} onChange={e=>setForm({...form,post_type:e.target.value})} style={{ ...inputStyle, width:'auto' }}>
+            {LIBRARY_POST_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g,' ')}</option>)}
+          </select>}
+          {type === 'caption_rule' && <select value={form.platform} onChange={e=>setForm({...form,platform:e.target.value})} style={{ ...inputStyle, width:'auto' }}>
+            {Object.keys(platformLabels).map(p => <option key={p} value={p}>{p}</option>)}
+          </select>}
+          <select value={form.performance_tag} onChange={e=>setForm({...form,performance_tag:e.target.value})} style={{ ...inputStyle, width:'auto' }}>
+            <option value="proven">Proven</option><option value="testing">Testing</option>
+          </select>
+          <button onClick={addEntry} style={{ background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'4px 12px', fontSize:10, fontWeight:700, cursor:'pointer' }}>Save</button>
+          <button onClick={() => setShowAdd(null)} style={{ fontSize:10, color:'var(--muted)', background:'none', border:'none', cursor:'pointer' }}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderEntry(item) {
+    return (
+      <div key={item.id} style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'8px 0', borderBottom:'1px solid rgba(71,130,211,0.05)' }}>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:13, color:'var(--muted-light)', lineHeight:1.5 }}>{item.text}</div>
+          <div style={{ display:'flex', gap:4, marginTop:4 }}>
+            <span style={{ fontSize:9, fontWeight:600, color:tagColors[item.performance_tag]||'var(--muted)', textTransform:'uppercase' }}>{item.performance_tag}</span>
+            {item.post_type && item.post_type !== 'all' && <span style={{ fontSize:9, background:'rgba(71,130,211,0.1)', color:'var(--blue)', borderRadius:3, padding:'0 4px' }}>{item.post_type.replace(/_/g,' ')}</span>}
+            {item.platform && item.platform !== 'all' && <span style={{ fontSize:9, color:'var(--muted)' }}>{item.platform}</span>}
+            <span style={{ fontSize:9, color:'var(--muted)' }}>{item.copy_count||0} copies</span>
+          </div>
+        </div>
+        <button onClick={() => handleCopy(item)} style={{ fontSize:10, fontWeight:600, color: copiedId === item.id ? 'var(--green)' : 'var(--blue)', background:'none', border:'none', cursor:'pointer', minWidth:50 }}>
+          {copiedId === item.id ? 'Copied!' : 'Copy'}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Hooks */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid rgba(71,130,211,0.1)', paddingBottom:6, marginBottom:8 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)' }}>Hooks</div>
+        <button onClick={() => setShowAdd(showAdd==='hook'?null:'hook')} style={{ fontSize:10, fontWeight:600, color:'var(--blue)', background:'none', border:'none', cursor:'pointer' }}>+ Add Hook</button>
+      </div>
+      {renderAddForm('hook')}
+      {hooks.length === 0 && <div style={{ fontSize:11, color:'var(--muted)', padding:'10px 0' }}>No hooks added yet. Add your first hook to start building your copy bank.</div>}
+      {hooks.map(renderEntry)}
+
+      {/* Caption Rules */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid rgba(71,130,211,0.1)', paddingBottom:6, marginTop:20, marginBottom:8 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)' }}>Platform Caption Rules</div>
+        <button onClick={() => setShowAdd(showAdd==='caption_rule'?null:'caption_rule')} style={{ fontSize:10, fontWeight:600, color:'var(--blue)', background:'none', border:'none', cursor:'pointer' }}>+ Add Rule</button>
+      </div>
+      {renderAddForm('caption_rule')}
+      {rules.map(renderEntry)}
+
+      {/* CTAs */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid rgba(71,130,211,0.1)', paddingBottom:6, marginTop:20, marginBottom:8 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)' }}>CTA Bank</div>
+        <button onClick={() => setShowAdd(showAdd==='cta'?null:'cta')} style={{ fontSize:10, fontWeight:600, color:'var(--blue)', background:'none', border:'none', cursor:'pointer' }}>+ Add CTA</button>
+      </div>
+      {renderAddForm('cta')}
+      {ctas.map(renderEntry)}
+    </div>
+  );
+}
+
+/* --- UTM/Links Sub-tab --- */
+function LibUTM({ platformLabels, reload, showToast, copyToClipboard }) {
+  const [utmPresets, setUtmPresets] = useState([]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ name:'', id_slug:'' });
+  const [showArchived, setShowArchived] = useState(false);
+  const [previewCampaign, setPreviewCampaign] = useState('');
+
+  useEffect(() => { setUtmPresets(Store.get('utm_presets') || []); }, []);
+
+  function addPreset() {
+    if (!form.name || !form.id_slug) return;
+    const slug = form.id_slug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    if (utmPresets.some(p => p.utm_campaign === slug)) { showToast('Campaign ID already exists. Use a unique ID.', 'error'); return; }
+    Store.push('utm_presets', { name: form.name, utm_campaign: slug, active: true, status:'active', created_date: new Date().toISOString() });
+    logEvent('utm_preset_added', { campaign_id: slug });
+    showToast('UTM preset added', 'success');
+    setForm({ name:'', id_slug:'' }); setShowAdd(false);
+    setUtmPresets(Store.get('utm_presets') || []);
+    reload();
+  }
+
+  function archivePreset(id) {
+    Store.update('utm_presets', id, { status:'archived', active: false });
+    logEvent('utm_preset_archived', { campaign_id: id });
+    showToast('UTM preset archived', 'info');
+    setUtmPresets(Store.get('utm_presets') || []);
+    reload();
+  }
+
+  function copyAllUtms(campaign) {
+    const platforms = Object.keys(platformLabels);
+    const lines = platforms.map(p => p + ': utm_source=' + p + '&utm_medium=social&utm_campaign=' + campaign + '&utm_content=example_make_model');
+    copyToClipboard(lines.join('\n'));
+    logEvent('utm_all_copied', { campaign_id: campaign, platform_count: 6 });
+    showToast('All UTM strings copied', 'success');
+  }
+
+  const active = utmPresets.filter(p => p.status !== 'archived');
+  const archived = utmPresets.filter(p => p.status === 'archived');
+  const briefs = Store.get('brief_log') || [];
+  const tinyurls = briefs.filter(b => b.tinyurl).sort((a,b) => new Date(b.created_date||b.target_date||0) - new Date(a.created_date||a.target_date||0));
+
+  return (
+    <div>
+      {/* Active Presets */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)' }}>UTM Presets</div>
+        <button onClick={() => setShowAdd(!showAdd)} style={{ fontSize:10, fontWeight:600, color:'var(--green)', background:'none', border:'none', cursor:'pointer' }}>{showAdd ? 'Cancel' : '+ New UTM Preset'}</button>
+      </div>
+
+      {showAdd && (
+        <div style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:12, marginBottom:12 }}>
+          <div style={{ display:'flex', gap:8, marginBottom:8 }}>
+            <input placeholder="Campaign Name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}
+              style={{ flex:1, padding:'5px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11 }} />
+            <input placeholder="campaign-slug" value={form.id_slug} onChange={e=>setForm({...form,id_slug:e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')})}
+              style={{ flex:1, padding:'5px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11, fontFamily:'monospace' }} />
+            <button onClick={addPreset} style={{ background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'5px 12px', fontSize:10, fontWeight:700, cursor:'pointer' }}>Add</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ fontSize:10, marginBottom:12 }}>
+        {active.map(p => (
+          <div key={p.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 0', borderBottom:'1px solid rgba(71,130,211,0.06)' }}>
+            <span style={{ flex:1, fontSize:12, fontWeight:600, color:'var(--white)' }}>{p.name}</span>
+            <span style={{ fontFamily:'monospace', fontSize:11, color:'var(--muted)' }}>{p.utm_campaign}</span>
+            <span style={{ fontSize:9, fontWeight:600, color:'var(--green)' }}>Active</span>
+            <button onClick={() => archivePreset(p.id)} style={{ fontSize:9, color:'var(--muted)', background:'none', border:'none', cursor:'pointer' }}>Archive</button>
+          </div>
+        ))}
+        {active.length === 0 && <div style={{ padding:'10px 0', fontSize:11, color:'var(--muted)' }}>No active UTM presets. Add one above.</div>}
+      </div>
+
+      <div style={{ fontSize:10, color:'var(--muted)', marginBottom:12 }}>These presets are the same ones available in the New Brief modal in Produce.</div>
+
+      {archived.length > 0 && (
+        <button onClick={() => setShowArchived(!showArchived)} style={{ fontSize:10, color:'var(--muted)', background:'none', border:'none', cursor:'pointer', marginBottom:8 }}>
+          {showArchived ? 'Hide archived' : 'Show archived (' + archived.length + ')'}
+        </button>
+      )}
+      {showArchived && archived.map(p => (
+        <div key={p.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 0', borderBottom:'1px solid rgba(71,130,211,0.04)', opacity:0.5 }}>
+          <span style={{ flex:1, fontSize:12, color:'var(--muted)' }}>{p.name}</span>
+          <span style={{ fontFamily:'monospace', fontSize:11, color:'var(--muted)' }}>{p.utm_campaign}</span>
+          <span style={{ fontSize:9, color:'var(--muted)' }}>Archived</span>
+        </div>
+      ))}
+
+      {/* UTM Preview */}
+      <div style={{ marginTop:16 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:13, color:'var(--white)', marginBottom:8 }}>Active Campaign UTM Preview</div>
+        <div style={{ display:'flex', gap:8, marginBottom:8 }}>
+          <select value={previewCampaign} onChange={e=>setPreviewCampaign(e.target.value)}
+            style={{ flex:1, padding:'5px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11 }}>
+            <option value="">Select campaign...</option>
+            {active.map(p => <option key={p.id} value={p.utm_campaign}>{p.name}</option>)}
+          </select>
+          {previewCampaign && <button onClick={() => copyAllUtms(previewCampaign)} style={{ fontSize:10, fontWeight:600, color:'var(--blue)', background:'none', border:'none', cursor:'pointer' }}>Copy All</button>}
+        </div>
+        {previewCampaign && (
+          <div style={{ background:'var(--navy-deep)', padding:12, borderRadius:6 }}>
+            {Object.keys(platformLabels).map(p => (
+              <div key={p} style={{ fontSize:10, fontFamily:'monospace', color:'var(--green)', marginBottom:3, wordBreak:'break-all' }}>
+                <span style={{ color:'var(--muted)', marginRight:4 }}>{platformLabels[p]}:</span>
+                utm_source={p}&utm_medium=social&utm_campaign={previewCampaign}&utm_content=example_make_model
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* TinyURL Log */}
+      <div style={{ marginTop:20 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:13, color:'var(--white)', marginBottom:8 }}>TinyURL Log</div>
+        {tinyurls.length === 0 && <div style={{ fontSize:11, color:'var(--muted)' }}>No TinyURLs logged yet. TinyURLs are added from the brief card in Produce.</div>}
+        {tinyurls.map(b => (
+          <div key={b.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'5px 0', borderBottom:'1px solid rgba(71,130,211,0.04)', fontSize:11 }}>
+            <span style={{ flex:1, color:'var(--white)' }}>{b.aircraft_year||''} {b.aircraft_make||b.make||''} {b.aircraft_model||b.model||''}</span>
+            <span style={{ fontFamily:'monospace', fontSize:11, color:'var(--blue)' }}>{b.tinyurl}</span>
+            <span style={{ color:'var(--muted)' }}>{(b.platforms||[b.platform]).map(p=>platformLabels[p]||p).join(', ')}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* --- Offers Sub-tab --- */
+function LibOffers({ offers, reload, showToast, nav }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [editQI, setEditQI] = useState(null);
+  const [qiVal, setQiVal] = useState(0);
+  const [form, setForm] = useState({ name:'', type:'checklist', target_persona:'serious_buyer', landing_page_url:'', qi_count:0, status:'active' });
+
+  const sorted = [...offers].sort((a,b) => {
+    const statusOrder = { active:0, paused:1, retired:2 };
+    if (statusOrder[a.status] !== statusOrder[b.status]) return statusOrder[a.status] - statusOrder[b.status];
+    return (b.qi_count||0) - (a.qi_count||0);
+  });
+
+  function addOffer() {
+    if (!form.name) return;
+    Store.push('library_offers', { ...form, created_date: new Date().toISOString() });
+    logEvent('offer_added', { offer_type: form.type, target_persona: form.target_persona });
+    showToast('Offer added', 'success');
+    setShowAdd(false); setForm({ name:'', type:'checklist', target_persona:'serious_buyer', landing_page_url:'', qi_count:0, status:'active' }); reload();
+  }
+
+  function saveQI(id) {
+    Store.update('library_offers', id, { qi_count: parseInt(qiVal) || 0 });
+    setEditQI(null); reload();
+  }
+
+  function promoteOffer(o) {
+    logEvent('offer_promoted', { offer_id: o.id, offer_type: o.type });
+    nav.navigate('produce', { open_modal:'new_brief', prefill:{ content_type:'lead_magnet', destination_url:o.landing_page_url } });
+  }
+
+  const inputStyle = { width:'100%', padding:'5px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11, fontFamily:'var(--font-body)' };
+  const typeLabels = { checklist:'CHECKLIST', guide:'GUIDE', calculator:'CALCULATOR', spec_sheet:'SPEC SHEET', other:'OTHER' };
+  const statusColors = { active:'var(--green)', paused:'var(--amber)', retired:'var(--muted)' };
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)' }}>Lead Magnets & Offers</div>
+        <button onClick={() => setShowAdd(!showAdd)} style={{ fontSize:10, fontWeight:600, color:'var(--green)', background:'none', border:'none', cursor:'pointer' }}>{showAdd ? 'Cancel' : '+ Add Offer'}</button>
+      </div>
+
+      {showAdd && (
+        <div style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:12, marginBottom:12 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
+            <div><label style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>Offer Name *</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} style={inputStyle} /></div>
+            <div><label style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>Type</label>
+              <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})} style={inputStyle}>
+                {Object.keys(typeLabels).map(t => <option key={t} value={t}>{typeLabels[t]}</option>)}
+              </select></div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
+            <div><label style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>Target Persona</label>
+              <select value={form.target_persona} onChange={e=>setForm({...form,target_persona:e.target.value})} style={inputStyle}>
+                {BUYER_PERSONAS.map(p => <option key={p} value={p}>{p.replace(/_/g,' ')}</option>)}
+              </select></div>
+            <div><label style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>Landing Page URL</label><input value={form.landing_page_url} onChange={e=>setForm({...form,landing_page_url:e.target.value})} style={inputStyle} /></div>
+          </div>
+          <button onClick={addOffer} style={{ background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'6px 14px', fontSize:11, fontWeight:700, cursor:'pointer' }}>Save Offer</button>
+        </div>
+      )}
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:12 }}>
+        {sorted.map(o => (
+          <div key={o.id} style={{ background:'var(--navy-light)', border:'1px solid rgba(71,130,211,0.1)', borderRadius:6, padding:14 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+              <span style={{ fontSize:9, fontWeight:700, background:'rgba(71,130,211,0.1)', color:'var(--blue)', borderRadius:3, padding:'1px 6px', textTransform:'uppercase' }}>{typeLabels[o.type]||o.type}</span>
+              <span style={{ fontSize:9, fontWeight:600, color:statusColors[o.status] }}>{o.status.toUpperCase()}</span>
+            </div>
+            <div style={{ fontSize:14, fontWeight:600, color:'var(--white)', marginBottom:4 }}>{o.name}</div>
+            <div style={{ fontSize:10, color:'var(--muted)', marginBottom:8 }}>
+              <span style={{ background:'rgba(71,130,211,0.08)', padding:'1px 5px', borderRadius:3 }}>{(o.target_persona||'').replace(/_/g,' ')}</span>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+              <span style={{ fontSize:10, color:'var(--muted)' }}>QI:</span>
+              {editQI === o.id ? (
+                <Fragment>
+                  <input type="number" value={qiVal} onChange={e=>setQiVal(e.target.value)} style={{ width:60, padding:'2px 6px', borderRadius:3, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:12 }} autoFocus />
+                  <button onClick={() => saveQI(o.id)} style={{ fontSize:9, color:'var(--green)', background:'none', border:'none', cursor:'pointer' }}>Save</button>
+                </Fragment>
+              ) : (
+                <Fragment>
+                  <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:20, color: o.qi_count > 0 ? 'var(--green)' : 'var(--muted)' }}>{o.qi_count||0}</span>
+                  <button onClick={() => { setEditQI(o.id); setQiVal(o.qi_count||0); }} style={{ fontSize:10, color:'var(--muted)', background:'none', border:'none', cursor:'pointer' }}>✎</button>
+                </Fragment>
+              )}
+            </div>
+            {o.landing_page_url && <a href={o.landing_page_url} target="_blank" rel="noopener" style={{ fontSize:10, color:'var(--blue)', display:'block', marginBottom:6 }}>{o.landing_page_url.replace('https://','').slice(0,40)}</a>}
+            <button onClick={() => promoteOffer(o)} style={{ fontSize:10, fontWeight:600, color:'var(--green)', background:'none', border:'none', cursor:'pointer' }}>Promote this Offer</button>
+          </div>
+        ))}
+      </div>
+      {offers.length === 0 && <div style={{ textAlign:'center', padding:20, fontSize:11, color:'var(--muted)' }}>No offers added. Add your first lead magnet or promotional offer to start tracking QI by offer.</div>}
+    </div>
+  );
+}
+
+/* --- Sponsor Kits Sub-tab --- */
+function LibSponsors({ sponsorKits, reload, showToast }) {
+  const [expanded, setExpanded] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ sponsor_name:'', package_tier:'custom', overall_due_date:'', drive_folder_url:'', notes:'', deliverables:[{ title:'', due_date:'' }] });
+
+  const tierColors = { platinum:'var(--green)', gold:'var(--amber)', silver:'var(--muted)', bronze:'#666', custom:'var(--blue)' };
+  const sorted = [...sponsorKits].sort((a,b) => {
+    if (a.status === 'complete' && b.status !== 'complete') return 1;
+    if (a.status !== 'complete' && b.status === 'complete') return -1;
+    return new Date(a.overall_due_date) - new Date(b.overall_due_date);
+  });
+
+  function toggleDeliverable(kitId, delId) {
+    const kits = Store.get('library_sponsor_kits') || [];
+    const kit = kits.find(k => k.id === kitId);
+    if (!kit) return;
+    const del = kit.deliverables.find(d => d.id === delId);
+    if (del) del.done = !del.done;
+    const allDone = kit.deliverables.length > 0 && kit.deliverables.every(d => d.done);
+    if (allDone && kit.status !== 'complete') { kit.status = 'complete'; showToast(kit.sponsor_name + ' kit marked complete', 'success'); }
+    else if (!allDone && kit.status === 'complete') kit.status = 'active';
+    Store.set('library_sponsor_kits', kits);
+    logEvent('sponsor_kit_deliverable_checked', { kit_id: kitId, deliverable_id: delId, all_done: allDone });
+    reload();
+  }
+
+  function addKit() {
+    if (!form.sponsor_name) return;
+    const deliverables = form.deliverables.filter(d => d.title).map((d,i) => ({ id:'del-'+generateId(), title:d.title, done:false, due_date:d.due_date||form.overall_due_date }));
+    Store.push('library_sponsor_kits', { sponsor_name:form.sponsor_name, package_tier:form.package_tier, status:'active', overall_due_date:form.overall_due_date, drive_folder_url:form.drive_folder_url, notes:form.notes, deliverables });
+    logEvent('sponsor_kit_added', { package_tier: form.package_tier });
+    showToast('Sponsor kit added', 'success');
+    setShowAdd(false); setForm({ sponsor_name:'', package_tier:'custom', overall_due_date:'', drive_folder_url:'', notes:'', deliverables:[{ title:'', due_date:'' }] }); reload();
+  }
+
+  const inputStyle = { width:'100%', padding:'5px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11, fontFamily:'var(--font-body)' };
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)' }}>Sponsor Kits</div>
+        <button onClick={() => setShowAdd(!showAdd)} style={{ fontSize:10, fontWeight:600, color:'var(--green)', background:'none', border:'none', cursor:'pointer' }}>{showAdd ? 'Cancel' : '+ New Sponsor Kit'}</button>
+      </div>
+
+      {showAdd && (
+        <div style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:12, marginBottom:12 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
+            <div><label style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>Sponsor Name *</label><input value={form.sponsor_name} onChange={e=>setForm({...form,sponsor_name:e.target.value})} style={inputStyle} /></div>
+            <div><label style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>Package Tier</label>
+              <select value={form.package_tier} onChange={e=>setForm({...form,package_tier:e.target.value})} style={inputStyle}>
+                <option value="bronze">Bronze</option><option value="silver">Silver</option><option value="gold">Gold</option><option value="platinum">Platinum</option><option value="custom">Custom</option>
+              </select></div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
+            <div><label style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>Overall Due Date</label><input type="date" value={form.overall_due_date} onChange={e=>setForm({...form,overall_due_date:e.target.value})} style={inputStyle} /></div>
+            <div><label style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>Drive Folder URL</label><input value={form.drive_folder_url} onChange={e=>setForm({...form,drive_folder_url:e.target.value})} style={inputStyle} /></div>
+          </div>
+          <div style={{ marginBottom:8 }}>
+            <label style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>Deliverables</label>
+            {form.deliverables.map((d,i) => (
+              <div key={i} style={{ display:'flex', gap:6, marginBottom:4 }}>
+                <input placeholder="Deliverable title" value={d.title} onChange={e => { const ds=[...form.deliverables]; ds[i].title=e.target.value; setForm({...form,deliverables:ds}); }} style={{ ...inputStyle, flex:2 }} />
+                <input type="date" value={d.due_date} onChange={e => { const ds=[...form.deliverables]; ds[i].due_date=e.target.value; setForm({...form,deliverables:ds}); }} style={{ ...inputStyle, flex:1 }} />
+              </div>
+            ))}
+            <button onClick={() => setForm({...form, deliverables:[...form.deliverables, { title:'', due_date:'' }]})} style={{ fontSize:10, color:'var(--blue)', background:'none', border:'none', cursor:'pointer' }}>+ Add row</button>
+          </div>
+          <button onClick={addKit} style={{ background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'6px 14px', fontSize:11, fontWeight:700, cursor:'pointer' }}>Save Kit</button>
+        </div>
+      )}
+
+      {sorted.map(kit => {
+        const doneCount = kit.deliverables.filter(d => d.done).length;
+        const totalCount = kit.deliverables.length;
+        const overdue = kit.status !== 'complete' && new Date(kit.overall_due_date) < new Date();
+        const dueToday = !overdue && new Date(kit.overall_due_date).toDateString() === new Date().toDateString();
+        const isExpanded = expanded === kit.id;
+        return (
+          <div key={kit.id} style={{ background:'var(--navy-light)', border:'1px solid rgba(71,130,211,0.1)', borderRadius:8, padding:14, marginBottom:10, cursor:'pointer' }}
+            onClick={() => setExpanded(isExpanded ? null : kit.id)}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div>
+                <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:15, color:'var(--white)' }}>{kit.sponsor_name}</div>
+                <div style={{ display:'flex', gap:6, marginTop:4 }}>
+                  <span style={{ fontSize:9, fontWeight:700, color:tierColors[kit.package_tier]||'var(--blue)', textTransform:'uppercase' }}>{kit.package_tier}</span>
+                  <span style={{ fontSize:10, color:'var(--muted)' }}>{doneCount}/{totalCount} deliverables</span>
+                  {kit.drive_folder_url && <a href={kit.drive_folder_url} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{ fontSize:10, color:'var(--blue)' }}>View Drive</a>}
+                </div>
+              </div>
+              <div style={{ textAlign:'right' }}>
+                {kit.status === 'complete' && <span style={{ fontSize:10, fontWeight:700, color:'var(--green)' }}>COMPLETE</span>}
+                {overdue && <span style={{ fontSize:10, fontWeight:700, color:'var(--red)' }}>OVERDUE</span>}
+                {dueToday && <span style={{ fontSize:10, fontWeight:700, color:'var(--amber)' }}>DUE TODAY</span>}
+                <div style={{ fontSize:10, color: overdue ? 'var(--red)' : 'var(--muted)', marginTop:2 }}>
+                  Due {new Date(kit.overall_due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+                </div>
+              </div>
+            </div>
+            {/* Progress bar */}
+            <div style={{ marginTop:8, height:4, background:'rgba(71,130,211,0.1)', borderRadius:2, overflow:'hidden' }}>
+              <div style={{ height:'100%', width: totalCount ? (doneCount/totalCount*100)+'%' : '0%', background:'var(--green)', borderRadius:2, transition:'width 0.3s' }} />
+            </div>
+            {/* Expanded deliverables */}
+            {isExpanded && (
+              <div style={{ marginTop:12, borderTop:'1px solid rgba(71,130,211,0.1)', paddingTop:8 }} onClick={e=>e.stopPropagation()}>
+                {kit.deliverables.map(d => {
+                  const delOverdue = !d.done && new Date(d.due_date) < new Date();
+                  return (
+                    <label key={d.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0', cursor:'pointer' }}>
+                      <input type="checkbox" checked={d.done} onChange={() => toggleDeliverable(kit.id, d.id)} style={{ accentColor:'var(--green)', width:16, height:16 }} />
+                      <span style={{ flex:1, fontSize:13, color: delOverdue ? 'var(--red)' : d.done ? 'var(--muted)' : 'var(--white)', fontWeight: delOverdue ? 700 : 400, textDecoration: d.done ? 'line-through' : 'none' }}>
+                        {delOverdue && 'OVERDUE '}{d.title}
+                      </span>
+                      <span style={{ fontSize:10, color: delOverdue ? 'var(--red)' : 'var(--muted)' }}>{new Date(d.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {sponsorKits.length === 0 && <div style={{ textAlign:'center', padding:20, fontSize:11, color:'var(--muted)' }}>No sponsor kits tracked yet.</div>}
+    </div>
+  );
+}
+
+/* --- Pipeline Sub-tab --- */
+function LibPipeline({ platformLabels, nav }) {
+  const briefs = Store.get('brief_log') || [];
+  const grouped = {};
+  briefs.forEach(b => {
+    const ct = b.content_type || b.bucket || 'unknown';
+    const make = b.aircraft_make || b.make || 'Unknown';
+    let cat = 'other';
+    for (const [k, makes] of Object.entries(AIRCRAFT_CATEGORIES)) { if (makes.some(m => make.toLowerCase().includes(m.toLowerCase()))) { cat = k; break; } }
+    const key = ct + '|' + cat;
+    if (!grouped[key]) grouped[key] = { content_type:ct, category:cat, scores:[], count:0 };
+    const clicks = b.tinyurl_clicks || 0;
+    const sessions = b.ga4_sessions || 0;
+    const qi = b.qi_attributed || 0;
+    grouped[key].scores.push(clicks * 1 + sessions * 3 + qi * 10);
+    grouped[key].count++;
+  });
+
+  const ranked = Object.values(grouped).map(g => ({
+    ...g, avgScore: g.scores.length ? (g.scores.reduce((a,b)=>a+b,0) / g.scores.length).toFixed(1) : 0
+  })).sort((a,b) => b.avgScore - a.avgScore);
+
+  return (
+    <div>
+      <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)', marginBottom:8 }}>Content Pipeline — By Impact Score</div>
+      <div style={{ fontSize:10, color:'var(--muted)', marginBottom:12 }}>* QI data pending GA4 Phase 2. Ranking based on TinyURL clicks only.</div>
+
+      {ranked.length === 0 && <div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', padding:20 }}>No post performance data available. Publish content and check back.</div>}
+
+      {ranked.slice(0, 1).map(r => (
+        <div key={r.content_type+'|'+r.category} style={{ background:'rgba(151,203,0,0.05)', border:'1px solid rgba(151,203,0,0.15)', borderRadius:6, padding:14, marginBottom:12 }}>
+          <div style={{ fontSize:12, fontWeight:600, color:'var(--white)' }}>Your best-performing content: {r.content_type.replace(/_/g,' ')} — {r.category}</div>
+          <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>Avg {r.avgScore} impact score · {r.count} posts</div>
+          <button onClick={() => nav.navigate('produce',{open_modal:'new_brief',prefill:{content_type:r.content_type}})}
+            style={{ marginTop:8, fontSize:10, fontWeight:600, color:'var(--green)', background:'none', border:'none', cursor:'pointer' }}>Make More →</button>
+        </div>
+      ))}
+
+      {ranked.map((r, i) => (
+        <div key={r.content_type+'|'+r.category} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid rgba(71,130,211,0.06)' }}>
+          <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--muted)', width:30, textAlign:'center' }}>{i+1}</span>
+          <div style={{ flex:1 }}>
+            <span style={{ fontSize:13, fontWeight:600, color:'var(--white)' }}>{r.content_type.replace(/_/g,' ')}</span>
+            <span style={{ fontSize:11, color:'var(--muted)', marginLeft:6 }}>{r.category}</span>
+          </div>
+          <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--blue)' }}>{r.avgScore}</span>
+          <span style={{ fontSize:12, color:'var(--muted)', minWidth:50 }}>{r.count} posts</span>
+          <button onClick={() => { logEvent('pipeline_make_more_clicked',{content_type:r.content_type,aircraft_category:r.category,avg_impact_score:r.avgScore}); nav.navigate('produce',{open_modal:'new_brief',prefill:{content_type:r.content_type}}); }}
+            style={{ fontSize:10, fontWeight:600, color:'var(--green)', background:'none', border:'none', cursor:'pointer' }}>Make More</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ============================================================
+   PLACEHOLDER VIEWS (Pages 4-5)
    ============================================================ */
 function PlaceholderView({ viewId }) {
   const meta = VIEWS.find(v => v.id === viewId);
   const descriptions = {
     learn: 'Performance analytics — leaderboards, funnel, attribution health.',
     compete: 'Competitive intelligence — vulnerability scoring, model coverage.',
-    library: 'Templates, copy bank, UTM presets, sponsor kits.',
-    requests: 'Team request intake, triage, status tracking.'
   };
   return (
     <div style={{ display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',textAlign:'center',padding:40 }}>
@@ -3627,6 +4399,7 @@ function App() {
       case 'command':  return <CommandView />;
       case 'plan':     return <PlanView />;
       case 'produce':  return <ProduceView />;
+      case 'library':  return <LibraryView />;
       case 'channel':  return <ChannelView />;
       case 'requests': return <RequestsView />;
       case 'settings': return <SettingsView />;
