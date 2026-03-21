@@ -4727,13 +4727,551 @@ function LearnDestinations({ briefs }) {
 }
 
 /* ============================================================
-   PLACEHOLDER VIEW (Page 5)
+   COMPETE VIEW (Page 5) — Competitive Intelligence
+   ============================================================ */
+const VULNERABILITY_WEIGHTS = { cadence_delta:25, content_quality:20, keyword_overlap:25, listing_delta:15, audience_overlap:15 };
+const VULNERABILITY_THRESHOLDS = { low:{max:39,color:'var(--green)',label:'Low Threat'}, medium:{min:40,max:69,color:'var(--amber)',label:'Watch'}, high:{min:70,color:'var(--red)',label:'High Threat'} };
+const COVERAGE_RESPONSES = { jet:'Increase jet listing posts to 3/week on LinkedIn', turboprop:'Target turboprop buyers with ownership content carousels', piston:'Prioritize piston listings — at-risk broker category', helicopter:'AvGeek helicopter content for top-of-funnel reach' };
+
+function getCurrentISOWeek() {
+  const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()+3-(d.getDay()+6)%7);
+  const w1 = new Date(d.getFullYear(),0,4);
+  const wn = 1 + Math.round(((d.getTime()-w1.getTime())/86400000 - 3 + (w1.getDay()+6)%7)/7);
+  return d.getFullYear() + '-W' + String(wn).padStart(2,'0');
+}
+
+function calcVulnScore(data, priorData) {
+  if (!data) return 0;
+  let score = 0;
+  // Cadence delta
+  const curTotal = data.posts_per_week ? Object.values(data.posts_per_week).reduce((s,n)=>s+n,0) : 0;
+  const priorTotal = priorData?.posts_per_week ? Object.values(priorData.posts_per_week).reduce((s,n)=>s+n,0) : curTotal;
+  const cadenceDelta = priorTotal > 0 ? ((curTotal - priorTotal) / priorTotal * 100) : 0;
+  if (cadenceDelta > 50) score += 25; else if (cadenceDelta > 25) score += 20; else if (cadenceDelta > 0) score += 10;
+  // Content quality
+  score += ((data.content_quality_rating||1) - 1) * 5;
+  // Keyword overlap
+  const kw = data.keyword_overlap_pct || 0;
+  if (kw > 80) score += 25; else if (kw > 60) score += 20; else if (kw > 40) score += 15; else if (kw > 20) score += 10;
+  // Listing delta
+  const ld = priorData?.listing_count ? ((data.listing_count - priorData.listing_count) / priorData.listing_count * 100) : 0;
+  if (ld > 10) score += 15; else if (ld > 0) score += 8;
+  // Audience overlap
+  const ao = data.audience_overlap_pct || 0;
+  if (ao > 40) score += 15; else if (ao >= 20) score += 10; else score += 5;
+  return Math.min(100, Math.max(0, score));
+}
+
+function vulnColor(score) { return score >= 70 ? 'var(--red)' : score >= 40 ? 'var(--amber)' : 'var(--green)'; }
+
+// Seed weekly data for competitors
+const COMPETE_SEED_WEEKLY = {
+  'comp-001': { week_of: getCurrentISOWeek(), posts_per_week:{linkedin:3,facebook:12,instagram:8,x:4,youtube:0,tiktok:0}, content_quality_rating:4, keyword_overlap_pct:72, listing_count:14200, audience_overlap_pct:38, vulnerability_score:62, content_angles:['operating cost disclaimers','piston price comparison hooks'], intel_notes:'Increased Facebook cadence vs last week. Running piston listing series with price comparison hooks. New angle: operating cost disclaimers on listings.' },
+  'comp-002': { week_of: getCurrentISOWeek(), posts_per_week:{linkedin:1,facebook:5,instagram:2,x:3,youtube:0,tiktok:0}, content_quality_rating:2, keyword_overlap_pct:31, listing_count:8400, audience_overlap_pct:22, vulnerability_score:24, content_angles:[], intel_notes:'' },
+  'comp-003': { week_of: getCurrentISOWeek(), posts_per_week:{linkedin:0,facebook:3,instagram:1,x:2,youtube:0,tiktok:0}, content_quality_rating:1, keyword_overlap_pct:18, listing_count:12100, audience_overlap_pct:15, vulnerability_score:12, content_angles:[], intel_notes:'' },
+  'comp-004': { week_of: getCurrentISOWeek(), posts_per_week:{linkedin:1,facebook:2,instagram:1,x:1,youtube:0,tiktok:0}, content_quality_rating:2, keyword_overlap_pct:24, listing_count:3200, audience_overlap_pct:11, vulnerability_score:16, content_angles:[], intel_notes:'' },
+  'comp-005': { week_of: getCurrentISOWeek(), posts_per_week:{linkedin:2,facebook:4,instagram:3,x:3,youtube:1,tiktok:0}, content_quality_rating:3, keyword_overlap_pct:28, listing_count:2800, audience_overlap_pct:19, vulnerability_score:22, content_angles:[], intel_notes:'' }
+};
+
+const COMPETE_SEED_MODEL_COVERAGE = {
+  'comp-001': { jet:4, turboprop:3, piston:8, helicopter:2 },
+  'comp-002': { jet:0, turboprop:1, piston:5, helicopter:1 },
+  'comp-003': { jet:0, turboprop:0, piston:4, helicopter:0 },
+  'comp-004': { jet:1, turboprop:1, piston:1, helicopter:0 },
+  'comp-005': { jet:2, turboprop:2, piston:3, helicopter:0 }
+};
+
+function CompeteView() {
+  const nav = useNav();
+  const [subTab, setSubTab] = useState('orders');
+  const [competitors, setCompetitors] = useState([]);
+  const [selectedComp, setSelectedComp] = useState('comp-001');
+  const [showDataEntry, setShowDataEntry] = useState(false);
+  const [refresh, setRefresh] = useState(0);
+
+  const platformLabels = { linkedin:'LI', facebook:'FB', instagram:'IG', x:'X', tiktok:'TT', youtube:'YT' };
+  const currentWeek = getCurrentISOWeek();
+
+  useEffect(() => {
+    let comps = Store.get('competitors') || [];
+    // Seed weekly_data and model_coverage if not present
+    comps.forEach(c => {
+      if (!c.weekly_data) c.weekly_data = [];
+      if (!c.model_coverage) c.model_coverage = COMPETE_SEED_MODEL_COVERAGE[c.id] || { jet:0, turboprop:0, piston:0, helicopter:0 };
+      if (c.weekly_data.length === 0 && COMPETE_SEED_WEEKLY[c.id]) c.weekly_data.push(COMPETE_SEED_WEEKLY[c.id]);
+      if (!c.social) c.social = { linkedin:'', facebook:'', instagram:'', x:'' };
+      if (c.is_primary === undefined) c.is_primary = (c.id === 'comp-001');
+      if (!c.status) c.status = 'active';
+    });
+    Store.set('competitors', comps);
+    setCompetitors(comps.filter(c => c.status === 'active'));
+  }, [refresh]);
+
+  function reload() { setRefresh(r => r + 1); }
+
+  function getWeekData(comp, week) { return comp?.weekly_data?.find(w => w.week_of === week) || null; }
+  function getPriorWeek() {
+    const d = new Date(); d.setDate(d.getDate() - 7);
+    d.setHours(0,0,0,0); d.setDate(d.getDate()+3-(d.getDay()+6)%7);
+    const w1 = new Date(d.getFullYear(),0,4);
+    const wn = 1 + Math.round(((d.getTime()-w1.getTime())/86400000 - 3 + (w1.getDay()+6)%7)/7);
+    return d.getFullYear() + '-W' + String(wn).padStart(2,'0');
+  }
+
+  const tabs = [
+    { id:'orders', label:'Orders' }, { id:'vulnerability', label:'Vulnerability' },
+    { id:'coverage', label:'Model Coverage' }, { id:'alerts', label:'Alerts' }
+  ];
+  const tabStyle = (active) => ({ background:'none', border:'none', borderBottom: active ? '2px solid var(--green)' : '2px solid transparent', color: active ? 'var(--white)' : 'var(--muted)', fontSize:11, fontWeight:600, padding:'8px 14px', cursor:'pointer', fontFamily:'var(--font-body)', transition:'all 0.15s' });
+
+  // Competitor strip
+  const sortedComps = [...competitors].sort((a,b) => {
+    const sa = getWeekData(a, currentWeek)?.vulnerability_score || 0;
+    const sb = getWeekData(b, currentWeek)?.vulnerability_score || 0;
+    return sb - sa;
+  });
+
+  return (
+    <div style={{ padding:'16px 20px', height:'100%', display:'flex', flexDirection:'column' }}>
+      {/* Sub-tabs + Manage button */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+        <div style={{ display:'flex', gap:0 }}>
+          {tabs.map(t => <button key={t.id} onClick={() => setSubTab(t.id)} style={tabStyle(subTab === t.id)}>{t.label}</button>)}
+        </div>
+      </div>
+
+      {/* Competitor strip */}
+      <div style={{ display:'flex', gap:10, paddingBottom:10, borderBottom:'1px solid rgba(71,130,211,0.08)', marginBottom:12, overflowX:'auto' }}>
+        {sortedComps.map(c => {
+          const wd = getWeekData(c, currentWeek);
+          const pwd = getWeekData(c, getPriorWeek());
+          const score = wd?.vulnerability_score ?? null;
+          const delta = (score !== null && pwd) ? score - (pwd.vulnerability_score||0) : null;
+          return (
+            <div key={c.id} onClick={() => { setSelectedComp(c.id); setSubTab('vulnerability'); logEvent('competitor_strip_card_clicked',{competitor_id:c.id,current_score:score}); }}
+              style={{ minWidth:140, background: score !== null ? 'var(--navy-light)' : 'rgba(71,130,211,0.04)', border: score !== null ? '1px solid rgba(71,130,211,0.1)' : '1px dashed rgba(71,130,211,0.15)', borderRadius:6, padding:'10px 12px', cursor:'pointer', transition:'border-color 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor='rgba(71,130,211,0.3)'} onMouseLeave={e => e.currentTarget.style.borderColor='rgba(71,130,211,0.1)'}>
+              <div style={{ fontSize:12, fontWeight:600, color:'var(--muted-light)', marginBottom:4 }}>
+                {c.name} {c.is_primary && <span style={{ fontSize:8, fontWeight:700, color:'var(--red)', background:'rgba(232,80,58,0.15)', padding:'0 4px', borderRadius:2, marginLeft:4 }}>PRIMARY</span>}
+              </div>
+              {score !== null ? (
+                <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+                  <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:28, color:vulnColor(score) }}>{score}</span>
+                  {delta !== null && delta !== 0 && <span style={{ fontSize:10, fontWeight:700, color: delta > 0 ? 'var(--red)' : 'var(--green)' }}>{delta > 0 ? '+' : ''}{delta}</span>}
+                  {delta === 0 && <span style={{ fontSize:10, color:'var(--muted)' }}>—</span>}
+                </div>
+              ) : (
+                <div style={{ fontSize:11, color:'var(--muted)' }}>Needs update</div>
+              )}
+              <div style={{ fontSize:9, color:'var(--muted)', marginTop:2 }}>MANUAL</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Content */}
+      <div style={{ flex:1, overflowY:'auto' }}>
+        {subTab === 'orders' && <CompeteOrders competitors={competitors} currentWeek={currentWeek} priorWeek={getPriorWeek()} getWeekData={getWeekData} platformLabels={platformLabels} nav={nav} setSubTab={setSubTab} />}
+        {subTab === 'vulnerability' && <CompeteVulnerability competitors={competitors} selectedComp={selectedComp} setSelectedComp={setSelectedComp} currentWeek={currentWeek} priorWeek={getPriorWeek()} getWeekData={getWeekData} reload={reload} showToast={nav.showToast} showDataEntry={showDataEntry} setShowDataEntry={setShowDataEntry} />}
+        {subTab === 'coverage' && <CompeteCoverage competitors={competitors} selectedComp={selectedComp} setSelectedComp={setSelectedComp} platformLabels={platformLabels} nav={nav} />}
+        {subTab === 'alerts' && <CompeteAlerts competitors={competitors} currentWeek={currentWeek} priorWeek={getPriorWeek()} getWeekData={getWeekData} nav={nav} />}
+      </div>
+    </div>
+  );
+}
+
+/* --- Orders Sub-tab --- */
+function CompeteOrders({ competitors, currentWeek, priorWeek, getWeekData, platformLabels, nav, setSubTab }) {
+  const primary = competitors.find(c => c.is_primary);
+  const pwd = primary ? getWeekData(primary, currentWeek) : null;
+
+  // Generate attacks
+  const attacks = [];
+  competitors.forEach(c => {
+    const wd = getWeekData(c, currentWeek);
+    const pwd2 = getWeekData(c, priorWeek);
+    if (!wd) return;
+    const scoreDelta = pwd2 ? wd.vulnerability_score - pwd2.vulnerability_score : 0;
+    if (scoreDelta > 5) attacks.push({ competitor:c.name, text:c.name + ' vulnerability score increased by ' + scoreDelta + ' points this week.', area:'Score', urgency:scoreDelta, type:'critical' });
+    if (wd.content_angles?.length) wd.content_angles.forEach(a => attacks.push({ competitor:c.name, text:'New content angle from ' + c.name + ': "' + a + '"', area:'Content', urgency:3, type:'watch' }));
+  });
+  // Coverage gaps
+  const briefs = Store.get('brief_log') || [];
+  const gaCoverage = { jet:0, turboprop:0, piston:0, helicopter:0 };
+  briefs.filter(b => b.status === 'published' || b.status === 'scheduled').forEach(b => {
+    const make = b.aircraft_make || b.make || '';
+    for (const [k, makes] of Object.entries(AIRCRAFT_CATEGORIES)) { if (makes.some(m => make.toLowerCase().includes(m.toLowerCase()))) { gaCoverage[k]++; break; } }
+  });
+  if (primary?.model_coverage) {
+    Object.entries(primary.model_coverage).forEach(([cat, posts]) => {
+      const gaPosts = gaCoverage[cat] || 0;
+      if (gaPosts === 0 || posts / Math.max(gaPosts,1) >= 3) attacks.push({ competitor:primary.name, text: primary.name + ' outposting GlobalAir ' + (gaPosts>0?Math.round(posts/gaPosts)+'x':'with 0 GlobalAir posts') + ' in ' + cat + '.', area:cat, urgency:8, type:'critical' });
+    });
+  }
+  attacks.sort((a,b) => b.urgency - a.urgency);
+
+  // Ian Briefing
+  const ianText = pwd ? 'Based on manual weekly observations — This week, ' + (primary?.name||'Controller.com') + ' maintained a vulnerability score of ' + (pwd.vulnerability_score||0) + '. ' + (pwd.content_angles?.length ? 'They are targeting: ' + pwd.content_angles.join(', ') + '. ' : '') + 'GlobalAir\'s strength remains verified listings and BrokerNet exclusivity. Recommended talking point: focus on listing accuracy and editorial content authority that Controller lacks.' : 'No competitive data entered this week.';
+
+  const typeColors = { critical:'var(--red)', watch:'var(--amber)', info:'var(--blue)' };
+
+  if (!pwd) return (
+    <div style={{ textAlign:'center', padding:40 }}>
+      <div style={{ fontSize:14, fontWeight:700, color:'var(--white)', marginBottom:8 }}>No competitive data entered this week</div>
+      <div style={{ fontSize:11, color:'var(--muted)', marginBottom:16 }}>Weekly intelligence takes 20-30 minutes. Enter data to generate your Orders.</div>
+      <button onClick={() => setSubTab('vulnerability')} style={{ background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'8px 20px', fontSize:12, fontWeight:700, fontFamily:'var(--font-display)', cursor:'pointer' }}>Enter Data Now</button>
+    </div>
+  );
+
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'65% 35%', gap:16 }}>
+      <div>
+        {/* Top Attacks */}
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)', marginBottom:8 }}>
+          {attacks.length >= 3 ? 'Top 3 Attacks This Week' : 'Top Attacks This Week'}
+        </div>
+        {attacks.slice(0,3).map((a,i) => (
+          <div key={i} style={{ background:'var(--navy-light)', borderLeft:'3px solid ' + (typeColors[a.type]||'var(--blue)'), borderRadius:6, padding:12, marginBottom:8 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+              <span style={{ fontSize:13, fontWeight:600, color:'var(--white)' }}>{a.text}</span>
+            </div>
+            <div style={{ display:'flex', gap:6 }}>
+              <span style={{ fontSize:9, fontWeight:600, color:typeColors[a.type], textTransform:'uppercase' }}>{a.type}</span>
+              <span style={{ fontSize:9, background:'rgba(71,130,211,0.1)', color:'var(--blue)', borderRadius:3, padding:'0 5px' }}>{a.area}</span>
+            </div>
+            <button onClick={() => nav.navigate('produce',{open_modal:'new_task',prefill:{tier:'T1',title:'Counter ' + a.competitor + ' on ' + a.area,tags:['#compete','#'+a.area]}})}
+              style={{ marginTop:6, fontSize:10, fontWeight:600, color:'var(--blue)', background:'none', border:'none', cursor:'pointer' }}>Create Task</button>
+          </div>
+        ))}
+        {attacks.length === 0 && <div style={{ fontSize:11, color:'var(--green)', padding:12 }}>No competitive threats detected this week.</div>}
+      </div>
+
+      {/* Ian Briefing Panel */}
+      <div style={{ background:'rgba(71,130,211,0.05)', border:'1px solid rgba(71,130,211,0.12)', borderRadius:6, padding:16 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:12, color:'var(--green)', marginBottom:8 }}>Ian Lumpp — Broker Briefing</div>
+        <div style={{ fontSize:12, color:'var(--muted-light)', lineHeight:1.6, marginBottom:12 }}>{ianText}</div>
+        <button onClick={() => { navigator.clipboard.writeText(ianText).catch(()=>{}); logEvent('ian_briefing_copied'); nav.showToast('Copied to clipboard', 'success'); }}
+          style={{ fontSize:11, fontWeight:600, color:'var(--blue)', background:'none', border:'1px solid rgba(71,130,211,0.2)', borderRadius:4, padding:'5px 12px', cursor:'pointer' }}>Copy to Clipboard</button>
+      </div>
+    </div>
+  );
+}
+
+/* --- Vulnerability Sub-tab --- */
+function CompeteVulnerability({ competitors, selectedComp, setSelectedComp, currentWeek, priorWeek, getWeekData, reload, showToast, showDataEntry, setShowDataEntry }) {
+  const comp = competitors.find(c => c.id === selectedComp) || competitors[0];
+  const wd = comp ? getWeekData(comp, currentWeek) : null;
+  const pwd = comp ? getWeekData(comp, priorWeek) : null;
+  const score = wd?.vulnerability_score ?? 0;
+
+  const [form, setForm] = useState({ li:0,fb:0,ig:0,x:0,yt:0,tt:0, quality:3, kwOverlap:0, listings:0, audienceOverlap:0, angles:'', notes:'' });
+
+  useEffect(() => {
+    if (wd) {
+      const pp = wd.posts_per_week || {};
+      setForm({ li:pp.linkedin||0, fb:pp.facebook||0, ig:pp.instagram||0, x:pp.x||0, yt:pp.youtube||0, tt:pp.tiktok||0,
+        quality:wd.content_quality_rating||3, kwOverlap:wd.keyword_overlap_pct||0, listings:wd.listing_count||0,
+        audienceOverlap:wd.audience_overlap_pct||0, angles:(wd.content_angles||[]).join(', '), notes:wd.intel_notes||'' });
+    }
+  }, [selectedComp]);
+
+  function saveData() {
+    const comps = Store.get('competitors') || [];
+    const c = comps.find(x => x.id === selectedComp);
+    if (!c) return;
+    if (!c.weekly_data) c.weekly_data = [];
+    const entry = {
+      week_of: currentWeek,
+      posts_per_week: { linkedin:parseInt(form.li)||0, facebook:parseInt(form.fb)||0, instagram:parseInt(form.ig)||0, x:parseInt(form.x)||0, youtube:parseInt(form.yt)||0, tiktok:parseInt(form.tt)||0 },
+      content_quality_rating: parseInt(form.quality)||3, keyword_overlap_pct: parseInt(form.kwOverlap)||0,
+      listing_count: parseInt(form.listings)||0, audience_overlap_pct: parseInt(form.audienceOverlap)||0,
+      content_angles: form.angles.split(',').map(s=>s.trim()).filter(Boolean), intel_notes: form.notes
+    };
+    const priorEntry = c.weekly_data.find(w => w.week_of === priorWeek);
+    entry.vulnerability_score = calcVulnScore(entry, priorEntry);
+    const existIdx = c.weekly_data.findIndex(w => w.week_of === currentWeek);
+    if (existIdx >= 0) c.weekly_data[existIdx] = entry; else c.weekly_data.push(entry);
+    Store.set('competitors', comps);
+    logEvent('vulnerability_data_entered', { competitor_id: selectedComp, score_before: score, score_after: entry.vulnerability_score, week_of: currentWeek });
+    showToast('Data saved — Score: ' + entry.vulnerability_score, 'success');
+    setShowDataEntry(false); reload();
+  }
+
+  // Radar data (normalized to 0-5 scale)
+  const radarDims = [
+    { label:'Cadence', value: wd ? Math.min(5, (Object.values(wd.posts_per_week||{}).reduce((s,n)=>s+n,0) / 10)) : 0 },
+    { label:'Quality', value: (wd?.content_quality_rating||0) },
+    { label:'Keywords', value: (wd?.keyword_overlap_pct||0) / 20 },
+    { label:'Listings', value: Math.min(5, (wd?.listing_count||0) / 5000) },
+    { label:'Audience', value: (wd?.audience_overlap_pct||0) / 20 }
+  ];
+
+  const inputStyle = { width:'100%', padding:'5px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11, fontFamily:'var(--font-body)' };
+  const labelStyle = { fontSize:10, color:'var(--muted)', fontWeight:600, marginBottom:2, display:'block' };
+
+  // Simple SVG radar
+  const cx=100, cy=100, r=80;
+  const angles = radarDims.map((_,i) => (Math.PI*2*i/radarDims.length) - Math.PI/2);
+  const points = radarDims.map((d,i) => {
+    const val = d.value / 5;
+    return { x: cx + r * val * Math.cos(angles[i]), y: cy + r * val * Math.sin(angles[i]) };
+  });
+  const polyPoints = points.map(p => p.x+','+p.y).join(' ');
+
+  return (
+    <div>
+      {/* Competitor selector */}
+      <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:12 }}>
+        <select value={selectedComp} onChange={e => { setSelectedComp(e.target.value); logEvent('competitor_selected',{competitor_id:e.target.value}); }}
+          style={{ ...inputStyle, width:'auto', minWidth:200 }}>
+          {competitors.map(c => <option key={c.id} value={c.id}>{c.name}{c.is_primary ? ' (PRIMARY)' : ''}</option>)}
+        </select>
+        <button onClick={() => setShowDataEntry(!showDataEntry)}
+          style={{ fontSize:10, fontWeight:600, color:'var(--green)', background:'rgba(151,203,0,0.1)', border:'none', borderRadius:4, padding:'5px 14px', cursor:'pointer' }}>
+          {showDataEntry ? 'Cancel' : 'Enter This Week\'s Data'}
+        </button>
+      </div>
+
+      {/* Score display */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
+        <div style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:20, textAlign:'center' }}>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:56, color:vulnColor(score) }}>{score}</div>
+          <div style={{ fontSize:11, color:'var(--muted)' }}>Vulnerability Score</div>
+          <div style={{ fontSize:9, color:'var(--muted)', marginTop:4 }}>MANUAL</div>
+          {comp?.is_primary && <div style={{ fontSize:10, color:'var(--amber)', marginTop:8 }}>Primary competitor — focus countering efforts on Posting Cadence and Keyword Overlap.</div>}
+        </div>
+
+        {/* SVG Radar */}
+        <div style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:12 }}>
+          <svg viewBox="0 0 200 200" style={{ width:'100%', maxHeight:180 }}>
+            {[0.2,0.4,0.6,0.8,1.0].map(s => (
+              <polygon key={s} points={angles.map(a => (cx + r*s*Math.cos(a))+','+(cy + r*s*Math.sin(a))).join(' ')}
+                fill="none" stroke="rgba(71,130,211,0.1)" strokeWidth="0.5" />
+            ))}
+            {angles.map((a,i) => (
+              <Fragment key={i}>
+                <line x1={cx} y1={cy} x2={cx + r*Math.cos(a)} y2={cy + r*Math.sin(a)} stroke="rgba(71,130,211,0.1)" strokeWidth="0.5" />
+                <text x={cx + (r+14)*Math.cos(a)} y={cy + (r+14)*Math.sin(a)} fill="#8A92A8" fontSize="8" textAnchor="middle" dominantBaseline="middle">{radarDims[i].label}</text>
+              </Fragment>
+            ))}
+            <polygon points={polyPoints} fill="rgba(26,47,168,0.3)" stroke="var(--blue)" strokeWidth="1.5" />
+            {points.map((p,i) => <circle key={i} cx={p.x} cy={p.y} r="3" fill="var(--green)" />)}
+          </svg>
+        </div>
+      </div>
+
+      {/* Data entry form */}
+      {showDataEntry && (
+        <div style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:14, marginBottom:16 }}>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:13, color:'var(--white)', marginBottom:10 }}>Week {currentWeek} — {comp?.name}</div>
+          <div style={{ marginBottom:8 }}>
+            <label style={labelStyle}>Posts/Week by Platform</label>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(6, 1fr)', gap:6 }}>
+              {[['li','LI'],['fb','FB'],['ig','IG'],['x','X'],['yt','YT'],['tt','TT']].map(([k,l]) => (
+                <div key={k}><label style={{ fontSize:9, color:'var(--muted)' }}>{l}</label><input type="number" value={form[k]} onChange={e=>setForm({...form,[k]:e.target.value})} style={inputStyle} /></div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:8, marginBottom:8 }}>
+            <div><label style={labelStyle}>Quality (1-5)</label><input type="number" min="1" max="5" value={form.quality} onChange={e=>setForm({...form,quality:e.target.value})} style={inputStyle} /></div>
+            <div><label style={labelStyle}>KW Overlap %</label><input type="number" min="0" max="100" value={form.kwOverlap} onChange={e=>setForm({...form,kwOverlap:e.target.value})} style={inputStyle} /></div>
+            <div><label style={labelStyle}>Listing Count</label><input type="number" value={form.listings} onChange={e=>setForm({...form,listings:e.target.value})} style={inputStyle} /></div>
+            <div><label style={labelStyle}>Audience %</label><input type="number" min="0" max="100" value={form.audienceOverlap} onChange={e=>setForm({...form,audienceOverlap:e.target.value})} style={inputStyle} /></div>
+          </div>
+          <div style={{ marginBottom:8 }}><label style={labelStyle}>Content Angles (comma-separated)</label><input value={form.angles} onChange={e=>setForm({...form,angles:e.target.value})} placeholder="price comparison, new feature..." style={inputStyle} /></div>
+          <div style={{ marginBottom:10 }}><label style={labelStyle}>Intel Notes</label><textarea rows={2} value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} maxLength={500} style={{ ...inputStyle, resize:'vertical' }} /></div>
+          <button onClick={saveData} style={{ background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'8px 20px', fontSize:11, fontWeight:700, fontFamily:'var(--font-display)', cursor:'pointer' }}>Save & Calculate Score</button>
+        </div>
+      )}
+
+      {/* Dimension breakdown */}
+      <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:13, color:'var(--white)', marginBottom:8 }}>Score Breakdown</div>
+      {radarDims.map(d => (
+        <div key={d.label} style={{ display:'flex', alignItems:'center', gap:10, padding:'5px 0', borderBottom:'1px solid rgba(71,130,211,0.06)' }}>
+          <span style={{ fontSize:11, color:'var(--muted-light)', minWidth:80 }}>{d.label}</span>
+          <div style={{ flex:1, height:8, background:'rgba(71,130,211,0.06)', borderRadius:4, overflow:'hidden' }}>
+            <div style={{ height:'100%', width:(d.value/5*100)+'%', background:'var(--blue)', borderRadius:4 }} />
+          </div>
+          <span style={{ fontSize:11, fontWeight:700, color:'var(--white)', minWidth:30, textAlign:'right' }}>{d.value.toFixed(1)}</span>
+        </div>
+      ))}
+
+      {/* Intelligence Log */}
+      {comp?.weekly_data?.length > 0 && (
+        <div style={{ marginTop:20 }}>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:13, color:'var(--white)', marginBottom:8 }}>Intelligence Log</div>
+          {[...comp.weekly_data].reverse().filter(w => w.intel_notes).map(w => (
+            <div key={w.week_of} style={{ padding:'8px 0', borderBottom:'1px solid rgba(71,130,211,0.06)' }}>
+              <span style={{ fontSize:10, fontWeight:700, background:'rgba(71,130,211,0.1)', color:'var(--blue)', padding:'1px 6px', borderRadius:3, marginRight:8 }}>{w.week_of}</span>
+              <span style={{ fontSize:11, color:'var(--muted-light)' }}>{w.intel_notes}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* --- Model Coverage Sub-tab --- */
+function CompeteCoverage({ competitors, selectedComp, setSelectedComp, platformLabels, nav }) {
+  const primary = competitors.find(c => c.is_primary) || competitors[0];
+  const secondary = competitors.find(c => c.id === selectedComp && !c.is_primary) || competitors.find(c => !c.is_primary);
+  const categories = ['jet','turboprop','piston','helicopter'];
+
+  // GlobalAir coverage from brief_log
+  const briefs = Store.get('brief_log') || [];
+  const gaCoverage = { jet:0, turboprop:0, piston:0, helicopter:0 };
+  briefs.filter(b => b.status === 'published' || b.status === 'scheduled').forEach(b => {
+    const make = b.aircraft_make || b.make || '';
+    for (const [k, makes] of Object.entries(AIRCRAFT_CATEGORIES)) { if (makes.some(m => make.toLowerCase().includes(m.toLowerCase()))) { gaCoverage[k]++; break; } }
+  });
+
+  const maxPosts = Math.max(1, ...categories.flatMap(cat => [gaCoverage[cat], primary?.model_coverage?.[cat]||0, secondary?.model_coverage?.[cat]||0]));
+
+  // Find top exposed category
+  let topExposed = null; let maxGapRatio = 0;
+  categories.forEach(cat => {
+    const ga = gaCoverage[cat] || 0;
+    const comp = primary?.model_coverage?.[cat] || 0;
+    const ratio = ga > 0 ? comp / ga : (comp > 0 ? Infinity : 0);
+    if (ratio > maxGapRatio) { maxGapRatio = ratio; topExposed = cat; }
+  });
+
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'65% 35%', gap:16 }}>
+      <div>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)', marginBottom:4 }}>Aircraft Category Coverage — Posts/Week</div>
+        <div style={{ fontSize:10, color:'var(--muted)', marginBottom:12 }}>GlobalAir from brief log (live). Competitors manually observed.</div>
+
+        {/* Secondary selector */}
+        <div style={{ marginBottom:12 }}>
+          <select value={secondary?.id||''} onChange={e => setSelectedComp(e.target.value)}
+            style={{ padding:'5px 8px', borderRadius:4, border:'1px solid rgba(71,130,211,0.2)', background:'var(--navy)', color:'var(--white)', fontSize:11 }}>
+            {competitors.filter(c => !c.is_primary).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+
+        {/* Grouped bars */}
+        {categories.map(cat => {
+          const ga = gaCoverage[cat] || 0;
+          const pri = primary?.model_coverage?.[cat] || 0;
+          const sec = secondary?.model_coverage?.[cat] || 0;
+          const gapRatio = ga > 0 ? pri / ga : (pri > 0 ? Infinity : 0);
+          const isCritical = gapRatio >= 3 || (ga === 0 && pri > 0);
+          const isGap = gapRatio >= 2;
+          return (
+            <div key={cat} style={{ marginBottom:16 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                <span style={{ fontSize:12, fontWeight:600, color:'var(--white)', textTransform:'capitalize' }}>{cat}</span>
+                {isCritical && <span style={{ fontSize:9, fontWeight:700, color:'#fff', background:'var(--red)', padding:'1px 6px', borderRadius:3 }}>CRITICAL GAP</span>}
+                {isGap && !isCritical && <span style={{ fontSize:9, fontWeight:700, color:'#fff', background:'var(--red)', padding:'1px 6px', borderRadius:3, opacity:0.7 }}>GAP</span>}
+              </div>
+              <div style={{ display:'flex', gap:4, height:24 }}>
+                <div style={{ flex:1, display:'flex', alignItems:'center', gap:4 }}>
+                  <div style={{ width:(ga/maxPosts*100)+'%', minWidth:2, height:20, background:'var(--green)', borderRadius:3, transition:'width 0.3s' }} />
+                  <span style={{ fontSize:10, color:'var(--green)', minWidth:20 }}>{ga}</span>
+                </div>
+                <div style={{ flex:1, display:'flex', alignItems:'center', gap:4 }}>
+                  <div style={{ width:(pri/maxPosts*100)+'%', minWidth:2, height:20, background:'rgba(232,80,58,0.7)', borderRadius:3, transition:'width 0.3s' }} />
+                  <span style={{ fontSize:10, color:'var(--red)', minWidth:20 }}>{pri}</span>
+                </div>
+                <div style={{ flex:1, display:'flex', alignItems:'center', gap:4 }}>
+                  <div style={{ width:(sec/maxPosts*100)+'%', minWidth:2, height:20, background:'rgba(71,130,211,0.5)', borderRadius:3, transition:'width 0.3s' }} />
+                  <span style={{ fontSize:10, color:'var(--blue)', minWidth:20 }}>{sec}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ display:'flex', gap:16, fontSize:10, marginTop:8 }}>
+          <span style={{ color:'var(--green)' }}>● GlobalAir</span>
+          <span style={{ color:'var(--red)' }}>● {primary?.name}</span>
+          <span style={{ color:'var(--blue)' }}>● {secondary?.name || 'Secondary'}</span>
+        </div>
+      </div>
+
+      {/* Coverage Intelligence Panel */}
+      <div style={{ background:'rgba(71,130,211,0.05)', border:'1px solid rgba(71,130,211,0.12)', borderRadius:6, padding:16 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:12, color:'var(--white)', marginBottom:12 }}>Coverage Intelligence</div>
+        {topExposed ? (
+          <div>
+            <div style={{ fontSize:11, color:'var(--muted)', marginBottom:4 }}>Top Exposed Category</div>
+            <div style={{ fontSize:16, fontWeight:700, color:'var(--red)', textTransform:'capitalize', marginBottom:8 }}>{topExposed}</div>
+            <div style={{ fontSize:11, color:'var(--muted-light)', lineHeight:1.5, marginBottom:12 }}>{COVERAGE_RESPONSES[topExposed]}</div>
+            <button onClick={() => { logEvent('coverage_task_created',{category:topExposed,competitor_id:primary?.id}); nav.navigate('produce',{open_modal:'new_task',prefill:{tier:'T1',title:'Counter ' + primary?.name + ' on ' + topExposed,tags:['#compete','#'+topExposed]}}); }}
+              style={{ width:'100%', background:'var(--green)', color:'var(--navy)', border:'none', borderRadius:4, padding:'8px 14px', fontSize:11, fontWeight:700, fontFamily:'var(--font-display)', cursor:'pointer' }}>Create Content Task</button>
+          </div>
+        ) : (
+          <div style={{ fontSize:11, color:'var(--green)' }}>No critical coverage gaps detected this period. Maintain current mix.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* --- Compete Alerts Sub-tab --- */
+function CompeteAlerts({ competitors, currentWeek, priorWeek, getWeekData, nav }) {
+  const alerts = [];
+  competitors.forEach(c => {
+    const wd = getWeekData(c, currentWeek);
+    const pwd = getWeekData(c, priorWeek);
+    if (!wd || !pwd) return;
+    // Cadence increase
+    const curTotal = Object.values(wd.posts_per_week||{}).reduce((s,n)=>s+n,0);
+    const priorTotal = Object.values(pwd.posts_per_week||{}).reduce((s,n)=>s+n,0);
+    if (priorTotal > 0) {
+      const delta = ((curTotal - priorTotal) / priorTotal * 100);
+      if (delta > 20) alerts.push({ id:c.id+'-cadence-'+currentWeek, type: delta > 50 ? 'critical' : 'watch', text: c.name + ' increased posting cadence by ' + delta.toFixed(0) + '% this week (' + priorTotal + ' → ' + curTotal + ' posts).', competitor:c.name, area:'Cadence' });
+    }
+    // New content angles
+    const priorAngles = pwd.content_angles || [];
+    const newAngles = (wd.content_angles||[]).filter(a => !priorAngles.includes(a));
+    newAngles.forEach(a => alerts.push({ id:c.id+'-angle-'+a, type:'watch', text: c.name + ' posted new content angle this week: "' + a + '". Consider counter-narrative.', competitor:c.name, area:'Content' }));
+  });
+
+  // Coverage gaps
+  const primary = competitors.find(c => c.is_primary);
+  if (primary?.model_coverage) {
+    const briefs = Store.get('brief_log') || [];
+    const gaCoverage = { jet:0, turboprop:0, piston:0, helicopter:0 };
+    briefs.filter(b => b.status === 'published' || b.status === 'scheduled').forEach(b => {
+      const make = b.aircraft_make || b.make || '';
+      for (const [k, makes] of Object.entries(AIRCRAFT_CATEGORIES)) { if (makes.some(m => make.toLowerCase().includes(m.toLowerCase()))) { gaCoverage[k]++; break; } }
+    });
+    Object.entries(primary.model_coverage).forEach(([cat, posts]) => {
+      const ga = gaCoverage[cat] || 0;
+      if (ga === 0 || posts / Math.max(ga,1) >= 3) alerts.push({ id:primary.id+'-gap-'+cat, type:'critical', text: primary.name + ' outposting GlobalAir ' + (ga>0?Math.round(posts/ga)+'x':'') + ' in ' + cat + '. ' + posts + ' competitor vs ' + ga + ' GlobalAir posts.', competitor:primary.name, area:cat });
+    });
+  }
+
+  const typeColors = { critical:'var(--red)', watch:'var(--amber)', info:'var(--blue)' };
+
+  return (
+    <div>
+      <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)', marginBottom:12 }}>Competitive Alerts</div>
+      {alerts.length === 0 && (
+        <div style={{ fontSize:11, color:'var(--muted)', textAlign:'center', padding:20 }}>
+          {competitors.some(c => getWeekData(c, currentWeek)) ? 'No competitive alerts this week.' : 'Enter this week\'s competitor observations to generate alerts.'}
+        </div>
+      )}
+      {alerts.map(a => (
+        <div key={a.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', marginBottom:8, background:'rgba(71,130,211,0.06)', borderRadius:6, borderLeft:'3px solid ' + (typeColors[a.type]||'var(--blue)') }}>
+          <span style={{ fontSize:9, fontWeight:700, color:typeColors[a.type], textTransform:'uppercase', minWidth:50 }}>{a.type}</span>
+          <span style={{ flex:1, fontSize:11, color:'var(--muted-light)' }}>{a.text}</span>
+          <button onClick={() => { logEvent('attack_task_created',{competitor_id:a.competitor,alert_type:a.type}); nav.navigate('produce',{open_modal:'new_task',prefill:{tier:'T1',title:'Counter ' + a.competitor + ' on ' + a.area,tags:['#compete','#'+a.area]}}); }}
+            style={{ fontSize:10, fontWeight:600, color:'var(--blue)', background:'none', border:'none', cursor:'pointer', whiteSpace:'nowrap' }}>Counter</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ============================================================
+   PLACEHOLDER VIEW — None remaining (all 8 pages built)
    ============================================================ */
 function PlaceholderView({ viewId }) {
   const meta = VIEWS.find(v => v.id === viewId);
-  const descriptions = {
-    compete: 'Competitive intelligence — vulnerability scoring, model coverage.',
-  };
+  const descriptions = {};
   return (
     <div style={{ display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',textAlign:'center',padding:40 }}>
       <div style={{ fontSize:48,marginBottom:16,opacity:0.3 }}>{meta?.icon}</div>
@@ -4876,6 +5414,7 @@ function App() {
       case 'produce':  return <ProduceView />;
       case 'library':  return <LibraryView />;
       case 'learn':    return <LearnView />;
+      case 'compete':  return <CompeteView />;
       case 'channel':  return <ChannelView />;
       case 'requests': return <RequestsView />;
       case 'settings': return <SettingsView />;
