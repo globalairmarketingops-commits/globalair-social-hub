@@ -4251,12 +4251,487 @@ function LibPipeline({ platformLabels, nav }) {
 }
 
 /* ============================================================
-   PLACEHOLDER VIEWS (Pages 4-5)
+   LEARN VIEW (Page 4) — Performance Analytics
+   ============================================================ */
+const PLATFORM_ALLOCATION_THRESHOLDS = {
+  invest:   { ctr_min: 3.0, qi_rate_min: 0.5 },
+  maintain: { ctr_min: 1.0, qi_rate_min: 0.1 },
+  reduce:   { ctr_max: 1.0, qi_rate_max: 0.1 }
+};
+const IMPACT_SCORE_WEIGHTS = { clicks: 1, sessions: 3, qi: 10 };
+const KILL_LIST_DAYS_THRESHOLD = 60;
+
+function LearnView() {
+  const nav = useNav();
+  const [subTab, setSubTab] = useState('north_star');
+  const [period, setPeriod] = useState('7d');
+  const platformLabels = { linkedin:'LI', facebook:'FB', instagram:'IG', x:'X', tiktok:'TT', youtube:'YT' };
+  const platformColors = { linkedin:'#0A66C2', facebook:'#7B68EE', instagram:'#E1306C', x:'#888', tiktok:'#69C9D0', youtube:'#FF0000' };
+
+  const tabs = [
+    { id:'north_star', label:'North Star' }, { id:'funnel', label:'Funnel' },
+    { id:'leaderboards', label:'Leaderboards' }, { id:'model_cat', label:'Model/Category' },
+    { id:'attribution', label:'Attribution Health' }, { id:'alerts', label:'Alerts' },
+    { id:'destinations', label:'Destinations' }, { id:'more', label:'More' }
+  ];
+  const tabStyle = (active) => ({ background:'none', border:'none', borderBottom: active ? '2px solid var(--green)' : '2px solid transparent', color: active ? 'var(--white)' : 'var(--muted)', fontSize:11, fontWeight:600, padding:'8px 12px', cursor:'pointer', fontFamily:'var(--font-body)', transition:'all 0.15s' });
+
+  const briefs = Store.get('brief_log') || [];
+  const windsorStatus = Store.get('settings.windsor_status') || 'disconnected';
+
+  // Windsor seed demo data
+  const windsorData = {
+    facebook: { impressions: 68200, clicks: 2140, engagement: 3180, reach: 41500, ctr: 3.14 },
+    instagram: { impressions: 31400, clicks: 890, engagement: 2140, reach: 18900, ctr: 2.83 },
+    linkedin: { impressions: 42100, clicks: 1840, engagement: 1840, reach: 33600, ctr: 4.37 }
+  };
+
+  return (
+    <div style={{ padding:'16px 20px', height:'100%', display:'flex', flexDirection:'column' }}>
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+        <div style={{ display:'flex', gap:0 }}>
+          {tabs.map(t => <button key={t.id} onClick={() => { setSubTab(t.id); logEvent(t.id+'_viewed',{period}); }} style={tabStyle(subTab === t.id)}>{t.label}</button>)}
+        </div>
+        <div style={{ display:'flex', gap:4 }}>
+          {['7d','30d','90d'].map(p => (
+            <button key={p} onClick={() => setPeriod(p)} style={{ fontSize:10, fontWeight:600, padding:'4px 10px', borderRadius:3, border: period===p ? '2px solid var(--green)' : '1px solid rgba(71,130,211,0.2)', background: period===p ? 'rgba(151,203,0,0.15)' : 'rgba(71,130,211,0.06)', color: period===p ? 'var(--green)' : 'var(--muted)', cursor:'pointer' }}>
+              {p.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Integrity strip */}
+      <div style={{ display:'flex', gap:8, marginBottom:12, fontSize:10 }}>
+        <span style={{ background:'rgba(71,130,211,0.08)', padding:'3px 8px', borderRadius:3, color:'var(--muted)' }}>
+          Windsor: <span style={{ color: windsorStatus === 'connected' ? 'var(--green)' : 'var(--amber)', fontWeight:700 }}>{windsorStatus === 'connected' ? 'LIVE' : 'PENDING'}</span>
+        </span>
+        <span style={{ background:'rgba(71,130,211,0.08)', padding:'3px 8px', borderRadius:3, color:'var(--muted)' }}>
+          GA4 Phase 2: <span style={{ color:'var(--amber)', fontWeight:700 }}>PENDING</span>
+        </span>
+        <span style={{ background:'rgba(71,130,211,0.08)', padding:'3px 8px', borderRadius:3, color:'var(--muted)' }}>
+          GA4: <span style={{ fontFamily:'monospace', fontSize:9 }}>G-K0N37V9FEB</span> · Email_Open_ filter: ACTIVE
+        </span>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex:1, overflowY:'auto' }}>
+        {subTab === 'north_star' && <LearnNorthStar briefs={briefs} windsorData={windsorData} platformColors={platformColors} platformLabels={platformLabels} period={period} nav={nav} />}
+        {subTab === 'funnel' && <LearnFunnel windsorData={windsorData} period={period} />}
+        {subTab === 'leaderboards' && <LearnLeaderboards briefs={briefs} windsorData={windsorData} platformColors={platformColors} platformLabels={platformLabels} period={period} />}
+        {subTab === 'model_cat' && <LearnModelCategory briefs={briefs} windsorData={windsorData} platformLabels={platformLabels} />}
+        {subTab === 'attribution' && <LearnAttribution briefs={briefs} platformLabels={platformLabels} />}
+        {subTab === 'alerts' && <LearnAlerts briefs={briefs} nav={nav} />}
+        {subTab === 'destinations' && <LearnDestinations briefs={briefs} />}
+        {subTab === 'more' && <div style={{ textAlign:'center', padding:40, fontSize:11, color:'var(--muted)' }}>Additional drilldowns coming in v2. Use existing sub-tabs for current analytics needs.</div>}
+      </div>
+    </div>
+  );
+}
+
+/* --- North Star Sub-tab --- */
+function LearnNorthStar({ briefs, windsorData, platformColors, platformLabels, period, nav }) {
+  // SCALE: top 3 briefs by clicks
+  const publishedBriefs = briefs.filter(b => b.status === 'published' || b.status === 'scheduled');
+  const scaleBriefs = [...publishedBriefs].sort((a,b) => (b.tinyurl_clicks||0) - (a.tinyurl_clicks||0)).slice(0,3);
+
+  // FIX: top issues
+  const fixItems = [];
+  const utmCoverage = briefs.length > 0 ? (briefs.filter(b => b.utm_string && Object.keys(b.utm_string||{}).length > 0).length / briefs.length * 100).toFixed(0) : 0;
+  if (parseInt(utmCoverage) < 90) fixItems.push({ text: 'UTM coverage at ' + utmCoverage + '% — target 90%', type: 'critical' });
+  if (!Store.get('settings.callrail_active')) fixItems.push({ text: 'CallRail not active — phone QI untracked', type: 'critical' });
+  if (!Store.get('settings.nbaa_sdc_booth')) fixItems.push({ text: 'NBAA SDC booth number unconfirmed', type: 'watch' });
+
+  // Platform allocation
+  function getAllocation(plat) {
+    const d = windsorData[plat];
+    if (!d || d.impressions === 0) return { label: 'Insufficient data', color: 'var(--muted)' };
+    const t = PLATFORM_ALLOCATION_THRESHOLDS;
+    if (d.ctr >= t.invest.ctr_min) return { label: 'INVEST', color: 'var(--green)' };
+    if (d.ctr >= t.maintain.ctr_min) return { label: 'MAINTAIN', color: 'var(--blue)' };
+    return { label: 'REDUCE', color: 'var(--amber)' };
+  }
+
+  const panelStyle = { background:'rgba(71,130,211,0.06)', borderRadius:6, padding:14, flex:1 };
+
+  return (
+    <div>
+      {/* Summary panels */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:16 }}>
+        <div style={{ ...panelStyle, borderLeft:'3px solid var(--green)' }}>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:12, color:'var(--green)', marginBottom:8 }}>SCALE</div>
+          {scaleBriefs.length === 0 && <div style={{ fontSize:11, color:'var(--muted)' }}>No performance data yet. Publish content to see top performers.</div>}
+          {scaleBriefs.map((b,i) => (
+            <div key={b.id} style={{ fontSize:11, color:'var(--muted-light)', marginBottom:4 }}>
+              {i+1}. {b.aircraft_year||''} {b.aircraft_make||b.make||''} {b.aircraft_model||b.model||''} — {b.tinyurl_clicks||0} clicks
+            </div>
+          ))}
+        </div>
+        <div style={{ ...panelStyle, borderLeft:'3px solid var(--red)' }}>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:12, color:'var(--red)', marginBottom:8 }}>FIX</div>
+          {fixItems.length === 0 && <div style={{ fontSize:11, color:'var(--green)' }}>No critical issues detected.</div>}
+          {fixItems.map((f,i) => (
+            <div key={i} style={{ fontSize:11, color: f.type==='critical' ? 'var(--red)' : 'var(--amber)', marginBottom:4 }}>{f.text}</div>
+          ))}
+        </div>
+        <div style={{ ...panelStyle, borderLeft:'3px solid var(--blue)' }}>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:12, color:'var(--blue)', marginBottom:8 }}>Platform Shift</div>
+          {['linkedin','facebook','instagram'].map(p => {
+            const a = getAllocation(p);
+            return (
+              <div key={p} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                <span style={{ fontSize:11, color:'var(--muted-light)' }}>{platformLabels[p]}</span>
+                <span style={{ fontSize:10, fontWeight:700, color:a.color }}>{a.label}</span>
+              </div>
+            );
+          })}
+          {['x','tiktok','youtube'].map(p => (
+            <div key={p} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+              <span style={{ fontSize:11, color:'var(--muted)' }}>{platformLabels[p]}</span>
+              <span style={{ fontSize:9, color:'var(--amber)' }}>PENDING</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Per-platform metric cards */}
+      <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:13, color:'var(--white)', marginBottom:8 }}>Platform Performance ({period.toUpperCase()})</div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10, marginBottom:16 }}>
+        {['linkedin','facebook','instagram'].map(p => {
+          const d = windsorData[p] || {};
+          return (
+            <div key={p} style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:12, borderTop:'3px solid ' + (platformColors[p]||'#888') }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'var(--white)', marginBottom:8 }}>{platformLabels[p]} — {p.charAt(0).toUpperCase()+p.slice(1)}</div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+                {[{l:'CTR',v:(d.ctr||0).toFixed(2)+'%'},{l:'Impressions',v:(d.impressions||0).toLocaleString()},{l:'Reach',v:(d.reach||0).toLocaleString()},{l:'Clicks',v:(d.clicks||0).toLocaleString()}].map(m => (
+                  <div key={m.l}>
+                    <div style={{ fontSize:9, color:'var(--muted)', textTransform:'uppercase' }}>{m.l}</div>
+                    <div style={{ fontSize:14, fontWeight:700, color:'var(--white)', fontFamily:'var(--font-display)' }}>{m.v}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop:6, fontSize:9, color:'var(--green)' }}>WINDSOR LIVE</div>
+            </div>
+          );
+        })}
+      </div>
+      {['x','tiktok','youtube'].map(p => null)}
+
+      {/* QI Trend placeholder */}
+      <div style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:16, marginBottom:12 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:13, color:'var(--white)', marginBottom:8 }}>QI Trend</div>
+        <div style={{ height:120, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--amber)', fontSize:11 }}>
+          QI trend requires GA4 Phase 2 validation. Chart renders when Windsor GA4 connector is live.
+        </div>
+      </div>
+
+      {/* Reach Trend placeholder */}
+      <div style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:16 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:13, color:'var(--white)', marginBottom:8 }}>Reach Trend (7 Weeks)</div>
+        <div style={{ display:'flex', gap:4, height:100, alignItems:'flex-end' }}>
+          {[0.6,0.7,0.65,0.8,0.75,0.85,1.0].map((h,i) => (
+            <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', gap:2, alignItems:'center' }}>
+              <div style={{ width:'100%', display:'flex', gap:1 }}>
+                {['linkedin','facebook','instagram'].map(p => (
+                  <div key={p} style={{ flex:1, height: h * (p==='facebook'?80:p==='linkedin'?60:40), background:platformColors[p], borderRadius:'2px 2px 0 0', opacity:0.7 }} />
+                ))}
+              </div>
+              <span style={{ fontSize:8, color:'var(--muted)' }}>W{i+1}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display:'flex', gap:12, marginTop:8, justifyContent:'center' }}>
+          {['linkedin','facebook','instagram'].map(p => (
+            <span key={p} style={{ fontSize:9, color:platformColors[p] }}>● {platformLabels[p]}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* --- Funnel Sub-tab --- */
+function LearnFunnel({ windsorData, period }) {
+  const totalImpressions = Object.values(windsorData).reduce((s,d) => s + (d.impressions||0), 0);
+  const totalClicks = Object.values(windsorData).reduce((s,d) => s + (d.clicks||0), 0);
+  const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions * 100).toFixed(2) : 0;
+
+  const stages = [
+    { label: 'Impressions', value: totalImpressions, rate: null, source: 'Windsor P1', status: 'live' },
+    { label: 'Link Clicks', value: totalClicks, rate: ctr + '% CTR', source: 'Windsor P1', status: 'live' },
+    { label: 'Site Sessions', value: null, rate: null, source: 'GA4 Phase 2', status: 'pending' },
+    { label: 'Engaged Sessions', value: null, rate: null, source: 'GA4 Phase 2', status: 'pending' },
+    { label: 'Email Captures', value: null, rate: null, source: 'GA4 Phase 2', status: 'pending' },
+    { label: 'Inquiries (QI)', value: null, rate: null, source: 'GA4 Phase 2', status: 'pending' }
+  ];
+
+  const maxVal = totalImpressions || 1;
+
+  return (
+    <div>
+      <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)', marginBottom:4 }}>Social → Inquiry Waterfall</div>
+      <div style={{ fontSize:10, color:'var(--muted)', marginBottom:16 }}>Period: {period.toUpperCase()} · Stages 3-6 pending GA4 Phase 2 validation</div>
+
+      {stages.map((s, i) => (
+        <div key={s.label} style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
+          <div style={{ width:30, textAlign:'center', fontFamily:'var(--font-display)', fontWeight:700, fontSize:16, color:'var(--muted)' }}>{i+1}</div>
+          <div style={{ flex:1 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+              <span style={{ fontSize:12, fontWeight:600, color:'var(--white)' }}>{s.label}</span>
+              <span style={{ fontSize:12, fontWeight:700, color: s.status === 'live' ? 'var(--white)' : 'var(--amber)', fontFamily:'var(--font-display)' }}>
+                {s.value !== null ? s.value.toLocaleString() : 'PENDING'}
+              </span>
+            </div>
+            <div style={{ height:20, background:'rgba(71,130,211,0.06)', borderRadius:3, overflow:'hidden' }}>
+              {s.value !== null && <div style={{ height:'100%', width: (s.value / maxVal * 100) + '%', background: i === 0 ? 'var(--blue)' : i === 1 ? 'var(--green)' : 'var(--muted)', borderRadius:3, minWidth:2 }} />}
+              {s.value === null && <div style={{ height:'100%', width:'100%', background:'repeating-linear-gradient(45deg, rgba(245,158,11,0.05), rgba(245,158,11,0.05) 4px, transparent 4px, transparent 8px)' }} />}
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', marginTop:2 }}>
+              <span style={{ fontSize:9, color:'var(--muted)' }}>{s.source}</span>
+              {s.rate && <span style={{ fontSize:10, fontWeight:600, color:'var(--green)' }}>{s.rate}</span>}
+            </div>
+          </div>
+        </div>
+      ))}
+
+      {/* Phase 2 notice */}
+      <div style={{ background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.15)', borderRadius:6, padding:12, marginTop:12, fontSize:11, color:'var(--amber)' }}>
+        GA4 Phase 2 required for stages 3-6. Windsor googleanalytics4 connector must be validated with Email_Open_ filter active. Until then, site session → QI attribution is not available.
+      </div>
+    </div>
+  );
+}
+
+/* --- Leaderboards Sub-tab --- */
+function LearnLeaderboards({ briefs, windsorData, platformColors, platformLabels, period }) {
+  const scored = briefs.filter(b => b.status === 'published' || b.status === 'scheduled').map(b => ({
+    ...b,
+    impactScore: (b.tinyurl_clicks||0) * IMPACT_SCORE_WEIGHTS.clicks + (b.ga4_sessions||0) * IMPACT_SCORE_WEIGHTS.sessions + (b.qi_attributed||0) * IMPACT_SCORE_WEIGHTS.qi
+  })).sort((a,b) => b.impactScore - a.impactScore);
+
+  // Platform allocation
+  function getAllocation(plat) {
+    const d = windsorData[plat];
+    if (!d) return 'PENDING';
+    const t = PLATFORM_ALLOCATION_THRESHOLDS;
+    if (d.ctr >= t.invest.ctr_min) return 'INVEST';
+    if (d.ctr >= t.maintain.ctr_min) return 'MAINTAIN';
+    return 'REDUCE';
+  }
+  const allocColors = { INVEST:'var(--green)', MAINTAIN:'var(--blue)', REDUCE:'var(--amber)', PENDING:'var(--muted)' };
+
+  return (
+    <div>
+      {/* Content Winners */}
+      <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)', marginBottom:8 }}>Content Winners</div>
+      <div style={{ fontSize:10, color:'var(--muted)', marginBottom:12 }}>* QI data pending GA4 Phase 2. Ranking based on TinyURL clicks only.</div>
+      {scored.length === 0 && <div style={{ fontSize:11, color:'var(--muted)', padding:20, textAlign:'center' }}>No published content to rank. Publish content and check back.</div>}
+      {scored.slice(0,10).map((b,i) => (
+        <div key={b.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:'1px solid rgba(71,130,211,0.06)' }}>
+          <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:16, color: i < 3 ? 'var(--green)' : 'var(--muted)', width:30, textAlign:'center' }}>{i+1}</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:12, fontWeight:600, color:'var(--white)' }}>{b.aircraft_year||''} {b.aircraft_make||b.make||''} {b.aircraft_model||b.model||''}</div>
+            <div style={{ fontSize:10, color:'var(--muted)' }}>{(b.platforms||[b.platform]).map(p=>platformLabels[p]||p).join(', ')} · {b.content_type || b.bucket || 'listing'}</div>
+          </div>
+          <div style={{ textAlign:'right' }}>
+            <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--blue)' }}>{b.impactScore}</div>
+            <div style={{ fontSize:9, color:'var(--muted)' }}>Impact Score*</div>
+          </div>
+        </div>
+      ))}
+
+      {/* Platform Allocation */}
+      <div style={{ marginTop:24 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)', marginBottom:8 }}>Platform Allocation</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10 }}>
+          {Object.keys(platformLabels).map(p => {
+            const alloc = getAllocation(p);
+            const d = windsorData[p];
+            return (
+              <div key={p} style={{ background:'rgba(71,130,211,0.06)', borderRadius:6, padding:12, textAlign:'center' }}>
+                <div style={{ fontSize:12, fontWeight:700, color:'var(--white)', marginBottom:4 }}>{platformLabels[p]}</div>
+                <div style={{ fontSize:14, fontWeight:700, color:allocColors[alloc], fontFamily:'var(--font-display)' }}>{alloc}</div>
+                {d && <div style={{ fontSize:10, color:'var(--muted)', marginTop:4 }}>CTR: {d.ctr.toFixed(2)}%</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* --- Model/Category Sub-tab --- */
+function LearnModelCategory({ briefs, windsorData, platformLabels }) {
+  const categories = ['piston','turboprop','jet','helicopter','other'];
+  const platforms = ['linkedin','facebook','instagram'];
+
+  // Build heatmap data
+  const heatmap = {};
+  categories.forEach(cat => { heatmap[cat] = {}; platforms.forEach(p => { heatmap[cat][p] = { posts:0, engagement:0 }; }); });
+
+  briefs.forEach(b => {
+    const make = b.aircraft_make || b.make || '';
+    let cat = 'other';
+    for (const [k, makes] of Object.entries(AIRCRAFT_CATEGORIES)) { if (makes.some(m => make.toLowerCase().includes(m.toLowerCase()))) { cat = k; break; } }
+    (b.platforms || [b.platform]).forEach(p => {
+      if (heatmap[cat]?.[p]) { heatmap[cat][p].posts++; heatmap[cat][p].engagement += (b.tinyurl_clicks || 0); }
+    });
+  });
+
+  const maxEng = Math.max(1, ...categories.flatMap(c => platforms.map(p => heatmap[c]?.[p]?.engagement || 0)));
+
+  return (
+    <div>
+      <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)', marginBottom:4 }}>Engagement Heatmap — Category × Platform</div>
+      <div style={{ fontSize:10, color:'var(--muted)', marginBottom:12 }}>Cell intensity = engagement (clicks). Windsor P1 live platforms only.</div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'100px repeat('+platforms.length+', 1fr)', gap:4 }}>
+        <div />
+        {platforms.map(p => <div key={p} style={{ textAlign:'center', fontSize:10, fontWeight:700, color:'var(--white)' }}>{platformLabels[p]}</div>)}
+        {categories.map(cat => (
+          <Fragment key={cat}>
+            <div style={{ fontSize:11, fontWeight:600, color:'var(--muted-light)', padding:'8px 0', textTransform:'capitalize' }}>{cat}</div>
+            {platforms.map(p => {
+              const cell = heatmap[cat]?.[p] || { posts:0, engagement:0 };
+              const intensity = cell.engagement / maxEng;
+              return (
+                <div key={p} style={{ background: cell.posts > 0 ? 'rgba(71,130,211,' + (0.1 + intensity * 0.5) + ')' : 'rgba(71,130,211,0.03)', borderRadius:4, padding:8, textAlign:'center', minHeight:50, display:'flex', flexDirection:'column', justifyContent:'center' }}>
+                  <div style={{ fontSize:14, fontWeight:700, color: cell.posts > 0 ? 'var(--white)' : 'var(--muted)', fontFamily:'var(--font-display)' }}>{cell.engagement}</div>
+                  <div style={{ fontSize:9, color:'var(--muted)' }}>{cell.posts} posts</div>
+                </div>
+              );
+            })}
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* --- Attribution Health Sub-tab --- */
+function LearnAttribution({ briefs, platformLabels }) {
+  const attributed = briefs.filter(b => b.tinyurl || (b.utm_string && Object.keys(b.utm_string||{}).length > 0))
+    .sort((a,b) => new Date(b.created_date||b.createdAt||0) - new Date(a.created_date||a.createdAt||0)).slice(0, 20);
+
+  return (
+    <div>
+      <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)', marginBottom:4 }}>UTM Click-Through Attribution</div>
+      <div style={{ fontSize:10, color:'var(--muted)', marginBottom:12 }}>Sessions + QI columns require GA4 Phase 2. Showing UTM coverage and click data only.</div>
+
+      <div style={{ fontSize:10 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 60px 60px 60px 60px 60px', gap:8, padding:'6px 0', borderBottom:'1px solid rgba(71,130,211,0.1)', color:'var(--muted)', fontWeight:600 }}>
+          <span>Post</span><span>Platform</span><span>Clicks</span><span>Sessions</span><span>QI</span><span>Conv%</span>
+        </div>
+        {attributed.length === 0 && <div style={{ padding:20, textAlign:'center', fontSize:11, color:'var(--muted)' }}>No attributed posts yet. Create briefs with UTMs in Produce.</div>}
+        {attributed.map(b => (
+          <div key={b.id} style={{ display:'grid', gridTemplateColumns:'1fr 60px 60px 60px 60px 60px', gap:8, padding:'5px 0', borderBottom:'1px solid rgba(71,130,211,0.04)', color:'var(--muted-light)' }}>
+            <span style={{ color:'var(--white)', fontSize:11 }}>{b.aircraft_year||''} {b.aircraft_make||b.make||''} {b.aircraft_model||b.model||''}</span>
+            <span>{(b.platforms||[b.platform]).map(p=>platformLabels[p]||p).join(',')}</span>
+            <span style={{ color:'var(--green)', fontWeight:600 }}>{b.tinyurl_clicks||'—'}</span>
+            <span style={{ color:'var(--amber)' }}>PENDING</span>
+            <span style={{ color:'var(--amber)' }}>PENDING</span>
+            <span style={{ color:'var(--amber)' }}>PENDING</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.15)', borderRadius:6, padding:10, marginTop:12, fontSize:10, color:'var(--amber)' }}>
+        If destination_url is empty on a brief, sessions and QI cannot be attributed. Fill destination URLs in Produce brief cards.
+      </div>
+    </div>
+  );
+}
+
+/* --- Alerts Sub-tab --- */
+function LearnAlerts({ briefs, nav }) {
+  const alerts = [];
+  // UTM coverage
+  const utmRate = briefs.length > 0 ? (briefs.filter(b => b.utm_string && Object.keys(b.utm_string||{}).length > 0).length / briefs.length * 100) : 0;
+  if (utmRate < 90) alerts.push({ id:'utm-coverage', type:'critical', text:'UTM coverage at ' + utmRate.toFixed(0) + '% — target 90%. ' + (briefs.filter(b => !b.utm_string || Object.keys(b.utm_string||{}).length === 0).length) + ' briefs missing UTMs.', action:'produce' });
+  if (!Store.get('settings.callrail_active')) alerts.push({ id:'callrail', type:'critical', text:'CallRail not active — phone inquiries (~90% of buyer activity) are not tracked.', action:'settings' });
+  if (!Store.get('settings.nbaa_sdc_booth')) alerts.push({ id:'nbaa', type:'watch', text:'NBAA SDC booth number not set — blocks event social posts.', action:'settings' });
+
+  // Kill list: briefs older than 60 days with 0 clicks
+  const killList = briefs.filter(b => {
+    const age = (Date.now() - new Date(b.created_date||b.createdAt||0).getTime()) / 86400000;
+    return age > KILL_LIST_DAYS_THRESHOLD && (b.tinyurl_clicks||0) === 0 && b.status !== 'published';
+  });
+
+  const typeColors = { critical:'var(--red)', watch:'var(--amber)', info:'var(--blue)' };
+
+  return (
+    <div>
+      <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)', marginBottom:12 }}>Active Alerts</div>
+      {alerts.length === 0 && <div style={{ fontSize:11, color:'var(--green)', padding:12 }}>No active alerts. All systems healthy.</div>}
+      {alerts.map(a => (
+        <div key={a.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', marginBottom:8, background:'rgba(71,130,211,0.06)', borderRadius:6, borderLeft:'3px solid ' + (typeColors[a.type]||'var(--blue)') }}>
+          <span style={{ fontSize:9, fontWeight:700, color:typeColors[a.type], textTransform:'uppercase', minWidth:50 }}>{a.type}</span>
+          <span style={{ flex:1, fontSize:11, color:'var(--muted-light)' }}>{a.text}</span>
+          <button onClick={() => nav.navigate(a.action)} style={{ fontSize:10, fontWeight:600, color:'var(--blue)', background:'none', border:'none', cursor:'pointer' }}>View</button>
+        </div>
+      ))}
+
+      {/* Kill List */}
+      <div style={{ marginTop:24 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:13, color:'var(--white)', marginBottom:8 }}>Kill List — 60+ Day Zero-Engagement</div>
+        <div style={{ fontSize:10, color:'var(--muted)', marginBottom:8 }}>Posts older than {KILL_LIST_DAYS_THRESHOLD} days with 0 TinyURL clicks. Consider archiving or repurposing.</div>
+        {killList.length === 0 && <div style={{ fontSize:11, color:'var(--green)' }}>No zero-engagement posts older than {KILL_LIST_DAYS_THRESHOLD} days.</div>}
+        {killList.map(b => (
+          <div key={b.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 0', borderBottom:'1px solid rgba(71,130,211,0.04)', fontSize:11 }}>
+            <span style={{ color:'var(--white)' }}>{b.aircraft_year||''} {b.aircraft_make||b.make||''} {b.aircraft_model||b.model||''}</span>
+            <span style={{ color:'var(--muted)' }}>{((Date.now()-new Date(b.created_date||b.createdAt||0).getTime())/86400000).toFixed(0)}d old</span>
+            <span style={{ color:'var(--red)', fontWeight:600 }}>0 clicks</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* --- Destinations Sub-tab --- */
+function LearnDestinations({ briefs }) {
+  // Group by destination URL
+  const urlMap = {};
+  briefs.filter(b => b.destination_url).forEach(b => {
+    const url = b.destination_url;
+    if (!urlMap[url]) urlMap[url] = { url, posts:0, clicks:0 };
+    urlMap[url].posts++;
+    urlMap[url].clicks += (b.tinyurl_clicks || 0);
+  });
+  const pages = Object.values(urlMap).sort((a,b) => b.clicks - a.clicks);
+
+  return (
+    <div>
+      <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14, color:'var(--white)', marginBottom:4 }}>Landing Page Performance</div>
+      <div style={{ fontSize:10, color:'var(--muted)', marginBottom:12 }}>Sessions and conversion rates require GA4 Phase 2. Showing URL traffic from brief TinyURL clicks.</div>
+
+      <div style={{ fontSize:10 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 60px 60px 60px 60px', gap:8, padding:'6px 0', borderBottom:'1px solid rgba(71,130,211,0.1)', color:'var(--muted)', fontWeight:600 }}>
+          <span>Landing Page</span><span>Posts</span><span>Clicks</span><span>Sessions</span><span>Conv%</span>
+        </div>
+        {pages.length === 0 && <div style={{ padding:20, textAlign:'center', fontSize:11, color:'var(--muted)' }}>No destination URLs set on briefs yet. Add destination URLs in Produce brief cards.</div>}
+        {pages.map(p => (
+          <div key={p.url} style={{ display:'grid', gridTemplateColumns:'1fr 60px 60px 60px 60px', gap:8, padding:'5px 0', borderBottom:'1px solid rgba(71,130,211,0.04)', color:'var(--muted-light)' }}>
+            <span style={{ color:'var(--blue)', fontSize:11, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.url.replace('https://globalair.com','').replace('https://www.globalair.com','') || p.url}</span>
+            <span>{p.posts}</span>
+            <span style={{ color:'var(--green)', fontWeight:600 }}>{p.clicks}</span>
+            <span style={{ color:'var(--amber)' }}>PENDING</span>
+            <span style={{ color:'var(--amber)' }}>PENDING</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   PLACEHOLDER VIEW (Page 5)
    ============================================================ */
 function PlaceholderView({ viewId }) {
   const meta = VIEWS.find(v => v.id === viewId);
   const descriptions = {
-    learn: 'Performance analytics — leaderboards, funnel, attribution health.',
     compete: 'Competitive intelligence — vulnerability scoring, model coverage.',
   };
   return (
@@ -4400,6 +4875,7 @@ function App() {
       case 'plan':     return <PlanView />;
       case 'produce':  return <ProduceView />;
       case 'library':  return <LibraryView />;
+      case 'learn':    return <LearnView />;
       case 'channel':  return <ChannelView />;
       case 'requests': return <RequestsView />;
       case 'settings': return <SettingsView />;
